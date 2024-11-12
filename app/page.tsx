@@ -8,6 +8,9 @@ import {
   BarChart3,
   Save,
   Slice,
+  Download,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   Select,
@@ -154,6 +157,15 @@ type SelectedParams = {
   questionTypes: string[];
 };
 
+type PaginationState = {
+  [key: string]: {
+    page: number;
+    expanded: Set<number>;
+  }
+};
+
+const ITEMS_PER_PAGE = 5;
+
 export default function Home() {
   const [pipelineParams] = useState<PipelineParams>(DEFAULT_PIPELINE_PARAMS);
   const [selectedParams, setSelectedParams] = useState<SelectedParams>({
@@ -181,6 +193,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [pagination, setPagination] = useState<PaginationState>({});
 
   // Mobile responsiveness
   useEffect(() => {
@@ -259,6 +272,7 @@ export default function Home() {
   const saveAnalysis = () => {
     if (analysisResults.length === 0) return;
 
+    // Create the analysis object
     const newAnalysis: SavedAnalysis = {
       id: crypto.randomUUID(),
       name: `Analysis ${savedAnalyses.length + 1}`,
@@ -266,9 +280,23 @@ export default function Home() {
       created_at: new Date().toISOString()
     };
 
+    // Save to local storage
     setSavedAnalyses(prev => [...prev, newAnalysis]);
     localStorage.setItem('savedAnalyses', JSON.stringify([...savedAnalyses, newAnalysis]));
-    toast.success('Analysis saved successfully');
+
+    // Download the JSON file
+    const dataStr = JSON.stringify(newAnalysis, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `spicex-analysis-${newAnalysis.id}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success('Analysis saved and downloaded successfully');
   };
 
   return (
@@ -532,9 +560,11 @@ export default function Home() {
                 variant="outline"
                 onClick={saveAnalysis}
                 disabled={analysisResults.length === 0}
+                className="flex items-center gap-2"
               >
-                <Save className="h-4 w-4 mr-2" />
-                Save Results
+                <Save className="h-4 w-4" />
+                <Download className="h-4 w-4" />
+                Save & Download
               </Button>
             </div>
           </div>
@@ -542,7 +572,8 @@ export default function Home() {
           {/* Results Display */}
           {analysisResults.length > 0 && (
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Analysis Results</h2>
+              <br className="hidden sm:block" />
+              <h2 className="text-lg font-semibold">Analysis Results</h2>
               <div className="space-y-4">
                 {analysisResults.map(result => (
                   <Card key={result.id}>
@@ -567,19 +598,108 @@ export default function Home() {
                       </div>
 
                       <div className="space-y-2">
-                        <h4 className="font-medium">Sample Responses</h4>
-                        {result.prompts.slice(0, 3).map((promptResult: PromptResult, idx: number) => (
-                          <div key={idx} className="border rounded-lg p-3 space-y-2">
-                            <p className="text-sm font-medium">{promptResult.text}</p>
-                            <div className="space-y-1">
-                              {promptResult.responses.map((response: string, rIdx: number) => (
-                                <p key={rIdx} className="text-sm text-muted-foreground">
-                                  Response {rIdx + 1}: {response}
-                                </p>
-                              ))}
-                            </div>
+                        <h4 className="font-medium">Responses</h4>
+                        {result.prompts
+                          .slice(
+                            (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
+                            ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
+                          )
+                          .map((promptResult: PromptResult, idx: number) => {
+                            const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
+                            const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+                            
+                            return (
+                              <div key={idx} className="border rounded-lg p-3 space-y-2">
+                                <div 
+                                  className="flex items-center justify-between cursor-pointer"
+                                  onClick={() => {
+                                    setPagination(prev => {
+                                      const currentExpanded = new Set(prev[result.id]?.expanded || []);
+                                      if (isExpanded) {
+                                        currentExpanded.delete(absoluteIdx);
+                                      } else {
+                                        currentExpanded.add(absoluteIdx);
+                                      }
+                                      return {
+                                        ...prev,
+                                        [result.id]: {
+                                          page: prev[result.id]?.page || 0,
+                                          expanded: currentExpanded
+                                        }
+                                      };
+                                    });
+                                  }}
+                                >
+                                  <p className="text-sm font-medium">{promptResult.text}</p>
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                  )}
+                                </div>
+                                
+                                {isExpanded && (
+                                  <div className="space-y-1 pt-2">
+                                    {promptResult.responses.map((response: string, rIdx: number) => (
+                                      <p key={rIdx} className="text-sm text-muted-foreground">
+                                        Response {rIdx + 1}: {response}
+                                      </p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        
+                        {/* Pagination Controls */}
+                        {result.prompts.length > ITEMS_PER_PAGE && (
+                          <div className="flex justify-center gap-2 mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPagination(prev => ({
+                                  ...prev,
+                                  [result.id]: {
+                                    page: Math.max(0, (prev[result.id]?.page || 0) - 1),
+                                    expanded: prev[result.id]?.expanded || new Set()
+                                  }
+                                }));
+                              }}
+                              disabled={(pagination[result.id]?.page || 0) === 0}
+                            >
+                              Previous
+                            </Button>
+                            
+                            <span className="flex items-center text-sm text-muted-foreground">
+                              Page {(pagination[result.id]?.page || 0) + 1} of{' '}
+                              {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
+                            </span>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPagination(prev => ({
+                                  ...prev,
+                                  [result.id]: {
+                                    page: Math.min(
+                                      Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
+                                      (prev[result.id]?.page || 0) + 1
+                                    ),
+                                    expanded: prev[result.id]?.expanded || new Set()
+                                  }
+                                }));
+                              }}
+                              disabled={
+                                (pagination[result.id]?.page || 0) >=
+                                Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
+                              }
+                            >
+                              Next
+                            </Button>
                           </div>
-                        ))}
+                        )}
                       </div>
                     </CardContent>
                   </Card>
