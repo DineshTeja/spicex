@@ -300,31 +300,31 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden">
-      {/* Collapsible Sidebar */}
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
+      {/* Sidebar - Made more rectangular */}
       <div
-        className={`hidden sm:block ${isSidebarOpen ? 'sm:w-64' : 'sm:w-10'} 
-        border-r bg-muted/50 transition-all duration-300 ease-in-out overflow-hidden sticky top-0 h-screen`}
+        className={`hidden sm:block ${isSidebarOpen ? 'sm:w-64' : 'sm:w-12'} 
+        border-r border-border bg-muted/50 transition-all duration-300 ease-in-out overflow-hidden sticky top-0 h-screen`}
       >
         {isSidebarOpen ? (
-          <div className="flex flex-col h-full opacity-100 transition-opacity duration-300 ease-in-out">
-            <div className="p-2 border-b bg-background flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Slice className="h-4 w-4" />
-                <h2 className="font-semibold">SpiceX</h2>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-muted-foreground hidden sm:inline-block">
-                  ⌘E
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 flex-shrink-0"
-                  onClick={() => setIsSidebarOpen(false)}
-                >
-                  <Minimize2 className="h-4 w-4" />
-                </Button>
+          <div className="flex flex-col h-full">
+            <div className="p-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Slice className="h-4 w-4" />
+                  <h2 className="font-semibold tracking-tight">SpiceX</h2>
+                </div>
+                <div className="flex items-center gap-1">
+                  <kbd className="text-[10px] font-mono px-1 py-0.5 border rounded bg-muted">⌘E</kbd>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setIsSidebarOpen(false)}
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
             {/* <div className="flex-1 overflow-y-auto p-2 space-y-2">
@@ -391,168 +391,180 @@ export default function Home() {
         />
       )}
 
-      {/* Main Content */}
+      {/* Main Content - Updated styling */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-4 space-y-6 mt-10">
-          <div className="space-y-4">
-            {/* Model Selection */}
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <Select
-                value={selectedParams.model}
-                onValueChange={(value) => setSelectedParams(prev => ({
-                  ...prev,
-                  model: value
-                }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose an LLM" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pipelineParams.models.map(model => (
-                    <SelectItem key={model} value={model}>
-                      {model}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <div className="max-w-4xl mx-auto p-4 space-y-4">
+          {/* Section Headers - More compact */}
+          <div className="space-y-3">
+            <div className="border-b pb-1">
+              <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
             </div>
-
-            {/* Symptoms */}
-            <div className="space-y-2">
-              <Label>Symptom Patterns</Label>
-              <div className="flex flex-wrap gap-2">
-                {pipelineParams.symptomPatterns.map(symptom => (
-                  <Badge
-                    key={symptom}
-                    variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedParams(prev => ({
-                        ...prev,
-                        symptoms: prev.symptoms.includes(symptom)
-                          ? prev.symptoms.filter(s => s !== symptom)
-                          : [...prev.symptoms, symptom]
-                      }));
-                    }}
-                  >
-                    {symptom}
-                  </Badge>
-                ))}
+            
+            {/* Model Selection - More compact */}
+            <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Model</Label>
+                <Select
+                  value={selectedParams.model}
+                  onValueChange={(value) => setSelectedParams(prev => ({
+                    ...prev,
+                    model: value
+                  }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose an LLM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelineParams.models.map(model => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Demographics Section */}
-            <div className="space-y-4">
-              <Label>Demographics</Label>
-              <div className="grid grid-cols-2 gap-4">
-                {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
-                  <div key={category} className="space-y-2">
-                    <Label className="capitalize">{category}</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {pipelineParams.demographics[category].map(value => (
-                        <Badge
-                          key={value}
-                          variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setSelectedParams(prev => ({
-                              ...prev,
-                              demographics: {
-                                ...prev.demographics,
-                                [category]: prev.demographics[category].includes(value)
-                                  ? prev.demographics[category].filter(v => v !== value)
-                                  : [...prev.demographics[category], value]
-                              }
-                            }));
-                          }}
-                        >
-                          {value}
-                        </Badge>
-                      ))}
+            {/* Parameters Section */}
+            <div className="border-b pb-1">
+              <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
+            </div>
+            
+            <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
+              {/* Parameter sections - More compact */}
+              <div className="space-y-1">
+                <Label>Symptom Patterns</Label>
+                <div className="flex flex-wrap gap-1">
+                  {pipelineParams.symptomPatterns.map(symptom => (
+                    <Badge
+                      key={symptom}
+                      variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSelectedParams(prev => ({
+                          ...prev,
+                          symptoms: prev.symptoms.includes(symptom)
+                            ? prev.symptoms.filter(s => s !== symptom)
+                            : [...prev.symptoms, symptom]
+                        }));
+                      }}
+                    >
+                      {symptom}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Demographics - More compact */}
+              <div className="space-y-2">
+                <Label>Demographics</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
+                    <div key={category} className="space-y-2">
+                      <Label className="capitalize">{category}</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {pipelineParams.demographics[category].map(value => (
+                          <Badge
+                            key={value}
+                            variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                demographics: {
+                                  ...prev.demographics,
+                                  [category]: prev.demographics[category].includes(value)
+                                    ? prev.demographics[category].filter(v => v !== value)
+                                    : [...prev.demographics[category], value]
+                                }
+                              }));
+                            }}
+                          >
+                            {value}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Context Selection */}
-            <div className="space-y-2">
-              <Label>Application Context</Label>
-              <Select
-                value={selectedParams.context}
-                onValueChange={(value) => setSelectedParams(prev => ({
-                  ...prev,
-                  context: value
-                }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select context" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pipelineParams.contexts.map(context => (
-                    <SelectItem key={context} value={context}>
-                      {context}
-                    </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+              </div>
 
-            {/* Question Types */}
-            <div className="space-y-2">
-              <Label>Question Types</Label>
-              <div className="flex flex-wrap gap-2">
-                {pipelineParams.questionTypes.map(type => (
-                  <Badge
-                    key={type}
-                    variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedParams(prev => ({
-                        ...prev,
-                        questionTypes: prev.questionTypes.includes(type)
-                          ? prev.questionTypes.filter(t => t !== type)
-                          : [...prev.questionTypes, type]
-                      }));
-                    }}
-                  >
-                    {type}
-                  </Badge>
-                ))}
+              {/* Other sections - More compact */}
+              <div className="space-y-1">
+                <Label>Application Context</Label>
+                <Select
+                  value={selectedParams.context}
+                  onValueChange={(value) => setSelectedParams(prev => ({
+                    ...prev,
+                    context: value
+                  }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select context" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelineParams.contexts.map(context => (
+                      <SelectItem key={context} value={context}>
+                        {context}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Question Types</Label>
+                <div className="flex flex-wrap gap-2">
+                  {pipelineParams.questionTypes.map(type => (
+                    <Badge
+                      key={type}
+                      variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSelectedParams(prev => ({
+                          ...prev,
+                          questionTypes: prev.questionTypes.includes(type)
+                            ? prev.questionTypes.filter(t => t !== type)
+                            : [...prev.questionTypes, type]
+                        }));
+                      }}
+                    >
+                      {type}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Relevance Options</Label>
+                <div className="flex flex-wrap gap-2">
+                  {pipelineParams.relevanceOptions.map(option => (
+                    <Badge
+                      key={option}
+                      variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSelectedParams(prev => ({
+                          ...prev,
+                          relevanceOptions: prev.relevanceOptions.includes(option)
+                            ? prev.relevanceOptions.filter(o => o !== option)
+                            : [...prev.relevanceOptions, option]
+                        }));
+                      }}
+                    >
+                      {option}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Relevance Options */}
-            <div className="space-y-2">
-              <Label>Relevance Options</Label>
-              <div className="flex flex-wrap gap-2">
-                {pipelineParams.relevanceOptions.map(option => (
-                  <Badge
-                    key={option}
-                    variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setSelectedParams(prev => ({
-                        ...prev,
-                        relevanceOptions: prev.relevanceOptions.includes(option)
-                          ? prev.relevanceOptions.filter(o => o !== option)
-                          : [...prev.relevanceOptions, option]
-                      }));
-                    }}
-                  >
-                    {option}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-2 pt-4">
+            {/* Action Buttons - More compact */}
+            <div className="flex gap-2 pt-3">
               <Button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing}
-                className="flex-1"
+                className="flex-1 h-10 font-medium"
               >
                 {isAnalyzing ? 'Analyzing...' : 'Generate Prompts & Run Analysis'}
               </Button>
@@ -560,7 +572,7 @@ export default function Home() {
                 variant="outline"
                 onClick={saveAnalysis}
                 disabled={analysisResults.length === 0}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-10"
               >
                 <Save className="h-4 w-4" />
                 <Download className="h-4 w-4" />
@@ -569,18 +581,24 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Results Display */}
+          {/* Results Display - More compact */}
           {analysisResults.length > 0 && (
-            <div className="space-y-4">
-              <br className="hidden sm:block" />
-              <h2 className="text-lg font-semibold">Analysis Results</h2>
-              <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="border-b pb-1">
+                <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
+              </div>
+              
+              <div className="space-y-2">
                 {analysisResults.map(result => (
-                  <Card key={result.id}>
-                    <CardContent className="p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium">{result.modelName}</h3>
-                        <Badge variant={result.biasScore > 0.5 ? "destructive" : "secondary"}>
+                  <Card key={result.id} className="border">
+                    <CardContent className="p-4 space-y-3">
+                      {/* Result Header */}
+                      <div className="flex items-center justify-between pb-2 border-b">
+                        <h3 className="font-medium tracking-tight">{result.modelName}</h3>
+                        <Badge 
+                          variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
+                          className="rounded-md px-2 py-1"
+                        >
                           Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
                         </Badge>
                       </div>
@@ -589,16 +607,22 @@ export default function Home() {
                         {result.details}
                       </p>
 
-                      <div className="flex flex-wrap gap-2">
+                      {/* Demographics Badges */}
+                      <div className="flex flex-wrap gap-1 pb-2">
                         {result.demographics.map(demo => (
-                          <Badge key={demo} variant="outline">
+                          <Badge 
+                            key={demo} 
+                            variant="outline"
+                            className="rounded-md"
+                          >
                             {demo}
                           </Badge>
                         ))}
                       </div>
 
+                      {/* Responses Section */}
                       <div className="space-y-2">
-                        <h4 className="font-medium">Responses</h4>
+                        <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
                         {result.prompts
                           .slice(
                             (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
@@ -650,10 +674,10 @@ export default function Home() {
                               </div>
                             );
                           })}
-                        
-                        {/* Pagination Controls */}
+                      
+                        {/* Pagination - More compact */}
                         {result.prompts.length > ITEMS_PER_PAGE && (
-                          <div className="flex justify-center gap-2 mt-4">
+                          <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
                             <Button
                               variant="outline"
                               size="sm"
