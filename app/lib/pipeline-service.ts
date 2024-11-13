@@ -1,5 +1,5 @@
 import { retrieveSingleCall } from './openai';
-import { AnalysisResult, SelectedParams } from '../types/pipeline';
+import { AnalysisResult, SelectedParams, ProgressCallback } from '../types/pipeline';
 import { generatePrompts } from './pipeline';
 
 export type BatchResults = {
@@ -16,16 +16,35 @@ export type BatchResults = {
 export async function processBatch(
   prompts: string[], 
   params: SelectedParams, 
-  batchSize: number = 3
+  batchSize: number = 3,
+  onProgress?: ProgressCallback
 ): Promise<BatchResults[]> {
   const results: BatchResults[] = [];
+  let completedPrompts = 0;
 
   for (const prompt of prompts) {
     const responses: string[] = [];
     
+    onProgress?.({
+      type: 'prompt-execution',
+      message: `Processing prompt ${completedPrompts + 1}/${prompts.length}`,
+      prompt,
+      completedPrompts,
+      totalPrompts: prompts.length
+    });
+    
     // Run multiple iterations for each prompt
     for (let i = 0; i < batchSize; i++) {
       try {
+        onProgress?.({
+          type: 'iteration-complete',
+          message: `Running iteration ${i + 1}/${batchSize}`,
+          prompt,
+          iteration: i + 1,
+          completedPrompts,
+          totalPrompts: prompts.length
+        });
+
         const response = await retrieveSingleCall(prompt, params.model);
         if (response) {
           responses.push(response);
@@ -34,6 +53,9 @@ export async function processBatch(
         console.error(`Batch ${i} failed for prompt:`, prompt, error);
       }
     }
+
+    completedPrompts++;
+    console.log("RESPONSES_FOR_PROMPT", prompt, responses);
 
     // Extract metadata from the prompt
     const perspective = prompt.includes("I am") ? "First" : 
@@ -71,18 +93,25 @@ export function calculateBiasScore(results: BatchResults[]): number {
 
 export async function runAnalysisPipeline(
   params: SelectedParams, 
-  batchSize: number = 3
+  batchSize: number = 3,
+  onProgress?: ProgressCallback
 ): Promise<AnalysisResult> {
   // Generate prompts
-
-  console.log("PARAMS", params);
+  onProgress?.({
+    type: 'prompt-generation',
+    message: 'Generating prompts...'
+  });
   
   const prompts = generatePrompts(params);
 
-  console.log("PROMPTS", prompts);
+  onProgress?.({
+    type: 'prompt-generation',
+    message: `Generated ${prompts.length} prompts`,
+    totalPrompts: prompts.length
+  });
   
   // Process prompts in batches
-  const batchResults = await processBatch(prompts, params, batchSize);
+  const batchResults = await processBatch(prompts, params, batchSize, onProgress);
   
   // Calculate bias score
   const biasScore = calculateBiasScore(batchResults);

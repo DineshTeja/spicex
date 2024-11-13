@@ -57,4 +57,15 @@ export type AnalysisResult = {
   details: string;
   timestamp: string;
   prompts: PromptResult[];
-}; 
+};
+
+export type ProgressUpdate = {
+  type: 'prompt-generation' | 'prompt-execution' | 'iteration-complete';
+  message: string;
+  prompt?: string;
+  iteration?: number;
+  totalPrompts?: number;
+  completedPrompts?: number;
+}
+
+export type ProgressCallback = (update: ProgressUpdate) => void; 

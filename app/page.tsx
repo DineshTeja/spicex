@@ -194,6 +194,13 @@ export default function Home() {
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [pagination, setPagination] = useState<PaginationState>({});
+  const [progress, setProgress] = useState<{
+    currentPrompt?: string;
+    iteration?: number;
+    totalPrompts?: number;
+    completedPrompts?: number;
+    message?: string;
+  } | null>(null);
 
   // Mobile responsiveness
   useEffect(() => {
@@ -224,18 +231,8 @@ export default function Home() {
       return;
     }
 
-    if (
-      selectedParams.templates.length === 0 ||
-      selectedParams.perspectives.length === 0 ||
-      selectedParams.recommendations.length === 0 ||
-      selectedParams.questionTypes.length === 0 ||
-      selectedParams.relevanceOptions.length === 0
-    ) {
-      toast.error('Missing required parameters for analysis');
-      return;
-    }
-
     setIsAnalyzing(true);
+    setProgress(null);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -246,26 +243,49 @@ export default function Home() {
         body: JSON.stringify(selectedParams),
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis request failed');
+      if (!response.ok) throw new Error('Analysis request failed');
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Failed to get response reader');
+
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(5));
+            
+            if (data.type === 'complete') {
+              setAnalysisResults(prev => [...prev, data.result]);
+              toast.success('Analysis completed successfully');
+            } else if (data.type === 'error') {
+              throw new Error(data.error);
+            } else {
+              setProgress({
+                currentPrompt: data.prompt,
+                iteration: data.iteration,
+                totalPrompts: data.totalPrompts,
+                completedPrompts: data.completedPrompts,
+                message: data.message
+              });
+            }
+          }
+        }
       }
-
-      const result = await response.json();
-
-      console.log(result);
-
-      setAnalysisResults(prev => [...prev, result]);
-
-      toast.success('Analysis completed successfully', {
-        description: `Generated ${result.prompts.length} prompts for analysis`
-      });
     } catch (error) {
-      console.log('Analysis failed:', error);
+      console.error('Analysis failed:', error);
       toast.error('Analysis failed. Please try again.', {
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
     } finally {
       setIsAnalyzing(false);
+      setProgress(null);
     }
   };
 
@@ -399,7 +419,7 @@ export default function Home() {
             <div className="border-b pb-1">
               <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
             </div>
-            
+
             {/* Model Selection - More compact */}
             <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
               <div className="space-y-1">
@@ -429,7 +449,7 @@ export default function Home() {
             <div className="border-b pb-1">
               <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
             </div>
-            
+
             <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
               {/* Parameter sections - More compact */}
               <div className="space-y-1">
@@ -559,6 +579,41 @@ export default function Home() {
               </div>
             </div>
 
+            {progress && (
+              <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{progress.message}</span>
+                    {progress.totalPrompts && (
+                      <span className="font-medium">
+                        {progress.completedPrompts || 0}/{progress.totalPrompts} prompts
+                      </span>
+                    )}
+                  </div>
+                  
+                  {progress.totalPrompts && (
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div 
+                        className="bg-primary rounded-full h-2 transition-all duration-300"
+                        style={{ 
+                          width: `${((progress.completedPrompts || 0) / progress.totalPrompts) * 100}%`
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {progress.currentPrompt && (
+                    <div className="text-sm text-muted-foreground mt-2">
+                      <p className="truncate">Current prompt: {progress.currentPrompt}</p>
+                      {progress.iteration && (
+                        <p>Iteration: {progress.iteration}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Action Buttons - More compact */}
             <div className="flex gap-2 pt-3">
               <Button
@@ -587,7 +642,7 @@ export default function Home() {
               <div className="border-b pb-1">
                 <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
               </div>
-              
+
               <div className="space-y-2">
                 {analysisResults.map(result => (
                   <Card key={result.id} className="border">
@@ -595,7 +650,7 @@ export default function Home() {
                       {/* Result Header */}
                       <div className="flex items-center justify-between pb-2 border-b">
                         <h3 className="font-medium tracking-tight">{result.modelName}</h3>
-                        <Badge 
+                        <Badge
                           variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
                           className="rounded-md px-2 py-1"
                         >
@@ -610,8 +665,8 @@ export default function Home() {
                       {/* Demographics Badges */}
                       <div className="flex flex-wrap gap-1 pb-2">
                         {result.demographics.map(demo => (
-                          <Badge 
-                            key={demo} 
+                          <Badge
+                            key={demo}
                             variant="outline"
                             className="rounded-md"
                           >
@@ -631,10 +686,10 @@ export default function Home() {
                           .map((promptResult: PromptResult, idx: number) => {
                             const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
                             const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
-                            
+
                             return (
                               <div key={idx} className="border rounded-lg p-3 space-y-2">
-                                <div 
+                                <div
                                   className="flex items-center justify-between cursor-pointer"
                                   onClick={() => {
                                     setPagination(prev => {
@@ -661,7 +716,7 @@ export default function Home() {
                                     <ChevronDown className="h-4 w-4 flex-shrink-0" />
                                   )}
                                 </div>
-                                
+
                                 {isExpanded && (
                                   <div className="space-y-1 pt-2">
                                     {promptResult.responses.map((response: string, rIdx: number) => (
@@ -674,7 +729,7 @@ export default function Home() {
                               </div>
                             );
                           })}
-                      
+
                         {/* Pagination - More compact */}
                         {result.prompts.length > ITEMS_PER_PAGE && (
                           <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
@@ -694,12 +749,12 @@ export default function Home() {
                             >
                               Previous
                             </Button>
-                            
+
                             <span className="flex items-center text-sm text-muted-foreground">
                               Page {(pagination[result.id]?.page || 0) + 1} of{' '}
                               {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
                             </span>
-                            
+
                             <Button
                               variant="outline"
                               size="sm"
