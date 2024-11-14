@@ -18,7 +18,7 @@ export async function retrieveSingleCall(prompt: string, model: string = "gpt-4"
 
     return response.choices[0].message.content;
   } catch (error) {
-    console.error('OpenAI API error:', error);
+    console.log('OpenAI API error:', error);
     throw error;
   }
 } 

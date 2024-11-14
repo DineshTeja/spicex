@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -11,6 +11,7 @@ import {
   Download,
   ChevronDown,
   ChevronUp,
+  Upload,
 } from "lucide-react";
 import {
   Select,
@@ -29,7 +30,9 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useHotkeys } from 'react-hotkeys-hook';
-import { AnalysisResult, PromptResult } from './types/pipeline';
+import { AnalysisResult, PromptResult, ExtractedConcepts } from './types/pipeline';
+import { ConceptVisualizations } from '@/components/ui/ConceptVisualizations';
+import { Input } from "@/components/ui/input";
 
 type SavedAnalysis = {
   id: string;
@@ -189,7 +192,7 @@ export default function Home() {
 
   // State management
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -199,6 +202,31 @@ export default function Home() {
     iteration?: number;
     totalPrompts?: number;
     completedPrompts?: number;
+    message?: string;
+  } | null>(null);
+
+  // Add new state for section visibility
+  const [configSectionsExpanded, setConfigSectionsExpanded] = useState({
+    modelConfig: true,
+    parameters: true
+  });
+
+  // Add state for concept distributions
+  const [conceptDistributions, setConceptDistributions] = useState<{
+    concepts: Map<string, number>;
+    raceDistributions: Map<string, Map<string, number>>;
+  }>({
+    concepts: new Map(),
+    raceDistributions: new Map()
+  });
+
+  // Add new state for file upload
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+
+  // Add new state for extraction progress
+  const [extractionProgress, setExtractionProgress] = useState<{
+    processed: number;
+    total: number;
     message?: string;
   } | null>(null);
 
@@ -225,6 +253,16 @@ export default function Home() {
     preventDefault: true
   });
 
+  // Add this useEffect to collapse sections when analysis starts or results load
+  useEffect(() => {
+    if (isAnalyzing || progress || analysisResults.length > 0) {
+      setConfigSectionsExpanded({
+        modelConfig: false,
+        parameters: false
+      });
+    }
+  }, [isAnalyzing, progress, analysisResults.length]);
+
   const handleAnalyze = async () => {
     if (!selectedParams.model || selectedParams.symptoms.length === 0) {
       toast.error('Please select a model and at least one symptom pattern');
@@ -233,6 +271,7 @@ export default function Home() {
 
     setIsAnalyzing(true);
     setProgress(null);
+    setConceptDistributions({ concepts: new Map(), raceDistributions: new Map() });
 
     try {
       const response = await fetch('/api/analyze', {
@@ -249,7 +288,8 @@ export default function Home() {
       if (!reader) throw new Error('Failed to get response reader');
 
       const decoder = new TextDecoder();
-      
+      let results: AnalysisResult[] = [];
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -260,8 +300,9 @@ export default function Home() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(5));
-            
+
             if (data.type === 'complete') {
+              results = [...results, data.result];
               setAnalysisResults(prev => [...prev, data.result]);
               toast.success('Analysis completed successfully');
             } else if (data.type === 'error') {
@@ -278,9 +319,13 @@ export default function Home() {
           }
         }
       }
+
+      // After analysis is complete, extract concepts
+      await extractConcepts(results);
+
     } catch (error) {
-      console.error('Analysis failed:', error);
-      toast.error('Analysis failed. Please try again.', {
+      console.error('Pipeline failed:', error);
+      toast.error('Pipeline failed. Please try again.', {
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
     } finally {
@@ -317,6 +362,152 @@ export default function Home() {
     URL.revokeObjectURL(url);
 
     toast.success('Analysis saved and downloaded successfully');
+  };
+
+  // Add file upload handler
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingFile(true);
+    toast.info('Processing uploaded results file...');
+
+    try {
+      // Read the file
+      const text = await file.text();
+      const uploadedResults = JSON.parse(text);
+
+      // Check if it's a single analysis or array of analyses
+      const results = uploadedResults.results || 
+                     (Array.isArray(uploadedResults) ? uploadedResults : [uploadedResults]);
+
+      if (!Array.isArray(results) || !results.length) {
+        throw new Error('Invalid results format');
+      }
+
+      // Set the results
+      setAnalysisResults(results);
+      toast.success('Results loaded successfully');
+
+      // Extract concepts from the loaded results
+      await extractConcepts(results);
+
+    } catch (error) {
+      console.error('File processing failed:', error);
+      toast.error('Failed to process results file', {
+        description: error instanceof Error ? error.message : 'Invalid file format'
+      });
+    } finally {
+      setIsProcessingFile(false);
+      if (event.target) {
+        event.target.value = ''; // Reset file input
+      }
+    }
+  }, []);
+
+  // Add a new helper function for concept extraction
+  const extractConcepts = async (results: AnalysisResult[]) => {
+    let abortController: AbortController | null = null;
+
+    try {
+      abortController = new AbortController();
+      const conceptResponse = await fetch('/api/extract-concepts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(results),
+        signal: abortController.signal
+      });
+
+      if (!conceptResponse.ok) throw new Error('Concept extraction failed');
+
+      const reader = conceptResponse.body?.getReader();
+      if (!reader) throw new Error('Failed to get concept reader');
+
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+
+                switch (data.type) {
+                  case 'extraction_progress':
+                    setExtractionProgress({
+                      processed: data.progress.processed,
+                      total: data.progress.total,
+                      message: data.message
+                    });
+                    break;
+
+                  case 'concepts':
+                    const extractedConcepts = data.extractedConcepts as ExtractedConcepts;
+                    setConceptDistributions(prev => {
+                      const newConcepts = new Map(prev.concepts);
+                      const newRaceDistributions = new Map(prev.raceDistributions);
+
+                      extractedConcepts.concepts.forEach((concept: string) => {
+                        newConcepts.set(concept, (newConcepts.get(concept) || 0) + 1);
+                        if (extractedConcepts.race) {
+                          if (!newRaceDistributions.has(extractedConcepts.race)) {
+                            newRaceDistributions.set(extractedConcepts.race, new Map());
+                          }
+                          const raceMap = newRaceDistributions.get(extractedConcepts.race)!;
+                          raceMap.set(concept, (raceMap.get(concept) || 0) + 1);
+                        }
+                      });
+
+                      return { concepts: newConcepts, raceDistributions: newRaceDistributions };
+                    });
+                    break;
+
+                  case 'complete':
+                    toast.success('Concept analysis completed');
+                    break;
+
+                  case 'error':
+                    toast.error(`Error: ${data.error}`);
+                    break;
+                }
+              } catch (parseError) {
+                console.error('Error parsing SSE data:', parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Extraction was aborted');
+      } else {
+        console.error('Concept extraction failed:', error);
+        toast.error('Concept extraction failed', {
+          description: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    } finally {
+      setExtractionProgress(null);
+      if (abortController) {
+        abortController.abort();
+      }
+    }
+  };
+
+  // Add this ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Add click handler for the button
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -416,213 +607,235 @@ export default function Home() {
         <div className="max-w-4xl mx-auto p-4 space-y-4">
           {/* Section Headers - More compact */}
           <div className="space-y-3">
-            <div className="border-b pb-1">
-              <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
-            </div>
-
-            {/* Model Selection - More compact */}
-            <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">Model</Label>
-                <Select
-                  value={selectedParams.model}
-                  onValueChange={(value) => setSelectedParams(prev => ({
-                    ...prev,
-                    model: value
-                  }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose an LLM" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pipelineParams.models.map(model => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Model Configuration Section */}
+            <div className="space-y-3">
+              <div 
+                className="border-b pb-1 flex justify-between items-center cursor-pointer"
+                onClick={() => setConfigSectionsExpanded(prev => ({
+                  ...prev,
+                  modelConfig: !prev.modelConfig
+                }))}
+              >
+                <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
+                {configSectionsExpanded.modelConfig ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </div>
+
+              {configSectionsExpanded.modelConfig && (
+                <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">Model</Label>
+                    <Select
+                      value={selectedParams.model}
+                      onValueChange={(value) => setSelectedParams(prev => ({
+                        ...prev,
+                        model: value
+                      }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose an LLM" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pipelineParams.models.map(model => (
+                          <SelectItem key={model} value={model}>
+                            {model}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Parameters Section */}
-            <div className="border-b pb-1">
-              <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
-            </div>
-
-            <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
-              {/* Parameter sections - More compact */}
-              <div className="space-y-1">
-                <Label>Symptom Patterns</Label>
-                <div className="flex flex-wrap gap-1">
-                  {pipelineParams.symptomPatterns.map(symptom => (
-                    <Badge
-                      key={symptom}
-                      variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => {
-                        setSelectedParams(prev => ({
-                          ...prev,
-                          symptoms: prev.symptoms.includes(symptom)
-                            ? prev.symptoms.filter(s => s !== symptom)
-                            : [...prev.symptoms, symptom]
-                        }));
-                      }}
-                    >
-                      {symptom}
-                    </Badge>
-                  ))}
-                </div>
+            <div className="space-y-3">
+              <div 
+                className="border-b pb-1 flex justify-between items-center cursor-pointer"
+                onClick={() => setConfigSectionsExpanded(prev => ({
+                  ...prev,
+                  parameters: !prev.parameters
+                }))}
+              >
+                <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
+                {configSectionsExpanded.parameters ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </div>
 
-              {/* Demographics - More compact */}
-              <div className="space-y-2">
-                <Label>Demographics</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
-                    <div key={category} className="space-y-2">
-                      <Label className="capitalize">{category}</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {pipelineParams.demographics[category].map(value => (
-                          <Badge
-                            key={value}
-                            variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
-                            className="cursor-pointer"
-                            onClick={() => {
-                              setSelectedParams(prev => ({
-                                ...prev,
-                                demographics: {
-                                  ...prev.demographics,
-                                  [category]: prev.demographics[category].includes(value)
-                                    ? prev.demographics[category].filter(v => v !== value)
-                                    : [...prev.demographics[category], value]
-                                }
-                              }));
-                            }}
-                          >
-                            {value}
-                          </Badge>
-                        ))}
-                      </div>
+              {configSectionsExpanded.parameters && (
+                <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
+                  {/* Parameter sections - More compact */}
+                  <div className="space-y-1">
+                    <Label>Symptom Patterns</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {pipelineParams.symptomPatterns.map(symptom => (
+                        <Badge
+                          key={symptom}
+                          variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setSelectedParams(prev => ({
+                              ...prev,
+                              symptoms: prev.symptoms.includes(symptom)
+                                ? prev.symptoms.filter(s => s !== symptom)
+                                : [...prev.symptoms, symptom]
+                            }));
+                          }}
+                        >
+                          {symptom}
+                        </Badge>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Other sections - More compact */}
-              <div className="space-y-1">
-                <Label>Application Context</Label>
-                <Select
-                  value={selectedParams.context}
-                  onValueChange={(value) => setSelectedParams(prev => ({
-                    ...prev,
-                    context: value
-                  }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select context" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pipelineParams.contexts.map(context => (
-                      <SelectItem key={context} value={context}>
-                        {context}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Question Types</Label>
-                <div className="flex flex-wrap gap-2">
-                  {pipelineParams.questionTypes.map(type => (
-                    <Badge
-                      key={type}
-                      variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => {
-                        setSelectedParams(prev => ({
-                          ...prev,
-                          questionTypes: prev.questionTypes.includes(type)
-                            ? prev.questionTypes.filter(t => t !== type)
-                            : [...prev.questionTypes, type]
-                        }));
-                      }}
-                    >
-                      {type}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Relevance Options</Label>
-                <div className="flex flex-wrap gap-2">
-                  {pipelineParams.relevanceOptions.map(option => (
-                    <Badge
-                      key={option}
-                      variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => {
-                        setSelectedParams(prev => ({
-                          ...prev,
-                          relevanceOptions: prev.relevanceOptions.includes(option)
-                            ? prev.relevanceOptions.filter(o => o !== option)
-                            : [...prev.relevanceOptions, option]
-                        }));
-                      }}
-                    >
-                      {option}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {progress && (
-              <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{progress.message}</span>
-                    {progress.totalPrompts && (
-                      <span className="font-medium">
-                        {progress.completedPrompts || 0}/{progress.totalPrompts} prompts
-                      </span>
-                    )}
                   </div>
-                  
-                  {progress.totalPrompts && (
-                    <div className="w-full bg-secondary rounded-full h-2">
-                      <div 
-                        className="bg-primary rounded-full h-2 transition-all duration-300"
-                        style={{ 
-                          width: `${((progress.completedPrompts || 0) / progress.totalPrompts) * 100}%`
-                        }}
-                      />
+
+                  {/* Demographics - More compact */}
+                  <div className="space-y-2">
+                    <Label>Demographics</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
+                        <div key={category} className="space-y-2">
+                          <Label className="capitalize">{category}</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {pipelineParams.demographics[category].map(value => (
+                              <Badge
+                                key={value}
+                                variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  setSelectedParams(prev => ({
+                                    ...prev,
+                                    demographics: {
+                                      ...prev.demographics,
+                                      [category]: prev.demographics[category].includes(value)
+                                        ? prev.demographics[category].filter(v => v !== value)
+                                        : [...prev.demographics[category], value]
+                                    }
+                                  }));
+                                }}
+                              >
+                                {value}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  
-                  {progress.currentPrompt && (
-                    <div className="text-sm text-muted-foreground mt-2">
-                      <p className="truncate">Current prompt: {progress.currentPrompt}</p>
-                      {progress.iteration && (
-                        <p>Iteration: {progress.iteration}</p>
-                      )}
+                  </div>
+
+                  {/* Other sections - More compact */}
+                  <div className="space-y-1">
+                    <Label>Application Context</Label>
+                    <Select
+                      value={selectedParams.context}
+                      onValueChange={(value) => setSelectedParams(prev => ({
+                        ...prev,
+                        context: value
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select context" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pipelineParams.contexts.map(context => (
+                          <SelectItem key={context} value={context}>
+                            {context}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Question Types</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {pipelineParams.questionTypes.map(type => (
+                        <Badge
+                          key={type}
+                          variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setSelectedParams(prev => ({
+                              ...prev,
+                              questionTypes: prev.questionTypes.includes(type)
+                                ? prev.questionTypes.filter(t => t !== type)
+                                : [...prev.questionTypes, type]
+                            }));
+                          }}
+                        >
+                          {type}
+                        </Badge>
+                      ))}
                     </div>
-                  )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Relevance Options</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {pipelineParams.relevanceOptions.map(option => (
+                        <Badge
+                          key={option}
+                          variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setSelectedParams(prev => ({
+                              ...prev,
+                              relevanceOptions: prev.relevanceOptions.includes(option)
+                                ? prev.relevanceOptions.filter(o => o !== option)
+                                : [...prev.relevanceOptions, option]
+                            }));
+                          }}
+                        >
+                          {option}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Action Buttons - More compact */}
             <div className="flex gap-2 pt-3">
               <Button
                 onClick={handleAnalyze}
-                disabled={isAnalyzing}
+                disabled={isAnalyzing || isProcessingFile}
                 className="flex-1 h-10 font-medium"
               >
                 {isAnalyzing ? 'Analyzing...' : 'Generate Prompts & Run Analysis'}
               </Button>
+              
+              <div className="relative">
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  disabled={isAnalyzing || isProcessingFile}
+                  className="hidden" // Hide the input
+                />
+                <Button
+                  variant="outline"
+                  disabled={isAnalyzing || isProcessingFile}
+                  className="flex items-center gap-2 h-10"
+                  onClick={handleUploadClick} // Add click handler
+                >
+                  {isProcessingFile ? (
+                    'Processing...'
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4" />
+                      Load Results
+                    </>
+                  )}
+                </Button>
+              </div>
+
               <Button
                 variant="outline"
                 onClick={saveAnalysis}
@@ -634,157 +847,229 @@ export default function Home() {
                 Save & Download
               </Button>
             </div>
+
+            {/* Progress Display - Analysis */}
+            {progress && (
+              <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{progress.message}</span>
+                    {progress.totalPrompts && (
+                      <span className="font-medium">
+                        {progress.completedPrompts || 0}/{progress.totalPrompts} prompts
+                      </span>
+                    )}
+                  </div>
+
+                  {progress.totalPrompts && (
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary rounded-full h-2 transition-all duration-300"
+                        style={{
+                          width: `${((progress.completedPrompts || 0) / progress.totalPrompts) * 100}%`
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {progress.currentPrompt && (
+                    <div className="text-sm text-muted-foreground mt-2">
+                      <p className="truncate">Current prompt: {progress.currentPrompt}</p>
+                      {progress.iteration && (
+                        <p>Iteration: {progress.iteration}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Results Display - More compact */}
           {analysisResults.length > 0 && (
-            <div className="space-y-3">
-              <div className="border-b pb-1">
-                <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
-              </div>
+            <>
+              <div className="space-y-3">
+                <div className="border-b pb-1">
+                  <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
+                </div>
 
-              <div className="space-y-2">
-                {analysisResults.map(result => (
-                  <Card key={result.id} className="border">
-                    <CardContent className="p-4 space-y-3">
-                      {/* Result Header */}
-                      <div className="flex items-center justify-between pb-2 border-b">
-                        <h3 className="font-medium tracking-tight">{result.modelName}</h3>
-                        <Badge
-                          variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
-                          className="rounded-md px-2 py-1"
-                        >
-                          Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
-                        </Badge>
-                      </div>
-
-                      <p className="text-sm text-muted-foreground">
-                        {result.details}
-                      </p>
-
-                      {/* Demographics Badges */}
-                      <div className="flex flex-wrap gap-1 pb-2">
-                        {result.demographics.map(demo => (
+                <div className="space-y-2">
+                  {analysisResults.map(result => (
+                    <Card key={result.id} className="border">
+                      <CardContent className="p-4 space-y-3">
+                        {/* Result Header */}
+                        <div className="flex items-center justify-between pb-2 border-b">
+                          <h3 className="font-medium tracking-tight">{result.modelName}</h3>
                           <Badge
-                            key={demo}
-                            variant="outline"
-                            className="rounded-md"
+                            variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
+                            className="rounded-md px-2 py-1"
                           >
-                            {demo}
+                            Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
                           </Badge>
-                        ))}
-                      </div>
+                        </div>
 
-                      {/* Responses Section */}
-                      <div className="space-y-2">
-                        <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
-                        {result.prompts
-                          .slice(
-                            (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
-                            ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
-                          )
-                          .map((promptResult: PromptResult, idx: number) => {
-                            const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
-                            const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+                        <p className="text-sm text-muted-foreground">
+                          {result.details}
+                        </p>
 
-                            return (
-                              <div key={idx} className="border rounded-lg p-3 space-y-2">
-                                <div
-                                  className="flex items-center justify-between cursor-pointer"
-                                  onClick={() => {
-                                    setPagination(prev => {
-                                      const currentExpanded = new Set(prev[result.id]?.expanded || []);
-                                      if (isExpanded) {
-                                        currentExpanded.delete(absoluteIdx);
-                                      } else {
-                                        currentExpanded.add(absoluteIdx);
-                                      }
-                                      return {
-                                        ...prev,
-                                        [result.id]: {
-                                          page: prev[result.id]?.page || 0,
-                                          expanded: currentExpanded
+                        {/* Demographics Badges */}
+                        <div className="flex flex-wrap gap-1 pb-2">
+                          {result.demographics.map(demo => (
+                            <Badge
+                              key={demo}
+                              variant="outline"
+                              className="rounded-md"
+                            >
+                              {demo}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        {/* Responses Section */}
+                        <div className="space-y-2">
+                          <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
+                          {result.prompts
+                            .slice(
+                              (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
+                              ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
+                            )
+                            .map((promptResult: PromptResult, idx: number) => {
+                              const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
+                              const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+
+                              return (
+                                <div key={idx} className="border rounded-lg p-3 space-y-2">
+                                  <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => {
+                                      setPagination(prev => {
+                                        const currentExpanded = new Set(prev[result.id]?.expanded || []);
+                                        if (isExpanded) {
+                                          currentExpanded.delete(absoluteIdx);
+                                        } else {
+                                          currentExpanded.add(absoluteIdx);
                                         }
-                                      };
-                                    });
-                                  }}
-                                >
-                                  <p className="text-sm font-medium">{promptResult.text}</p>
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-4 w-4 flex-shrink-0" />
-                                  ) : (
-                                    <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                        return {
+                                          ...prev,
+                                          [result.id]: {
+                                            page: prev[result.id]?.page || 0,
+                                            expanded: currentExpanded
+                                          }
+                                        };
+                                      });
+                                    }}
+                                  >
+                                    <p className="text-sm font-medium">{promptResult.text}</p>
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                    )}
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="space-y-1 pt-2">
+                                      {promptResult.responses.map((response: string, rIdx: number) => (
+                                        <p key={rIdx} className="text-sm text-muted-foreground">
+                                          Response {rIdx + 1}: {response}
+                                        </p>
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
+                              );
+                            })}
 
-                                {isExpanded && (
-                                  <div className="space-y-1 pt-2">
-                                    {promptResult.responses.map((response: string, rIdx: number) => (
-                                      <p key={rIdx} className="text-sm text-muted-foreground">
-                                        Response {rIdx + 1}: {response}
-                                      </p>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          {/* Pagination - More compact */}
+                          {result.prompts.length > ITEMS_PER_PAGE && (
+                            <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setPagination(prev => ({
+                                    ...prev,
+                                    [result.id]: {
+                                      page: Math.max(0, (prev[result.id]?.page || 0) - 1),
+                                      expanded: prev[result.id]?.expanded || new Set()
+                                    }
+                                  }));
+                                }}
+                                disabled={(pagination[result.id]?.page || 0) === 0}
+                              >
+                                Previous
+                              </Button>
 
-                        {/* Pagination - More compact */}
-                        {result.prompts.length > ITEMS_PER_PAGE && (
-                          <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setPagination(prev => ({
-                                  ...prev,
-                                  [result.id]: {
-                                    page: Math.max(0, (prev[result.id]?.page || 0) - 1),
-                                    expanded: prev[result.id]?.expanded || new Set()
-                                  }
-                                }));
-                              }}
-                              disabled={(pagination[result.id]?.page || 0) === 0}
-                            >
-                              Previous
-                            </Button>
+                              <span className="flex items-center text-sm text-muted-foreground">
+                                Page {(pagination[result.id]?.page || 0) + 1} of{' '}
+                                {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
+                              </span>
 
-                            <span className="flex items-center text-sm text-muted-foreground">
-                              Page {(pagination[result.id]?.page || 0) + 1} of{' '}
-                              {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
-                            </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setPagination(prev => ({
+                                    ...prev,
+                                    [result.id]: {
+                                      page: Math.min(
+                                        Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
+                                        (prev[result.id]?.page || 0) + 1
+                                      ),
+                                      expanded: prev[result.id]?.expanded || new Set()
+                                    }
+                                  }));
+                                }}
+                                disabled={
+                                  (pagination[result.id]?.page || 0) >=
+                                  Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
+                                }
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
 
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setPagination(prev => ({
-                                  ...prev,
-                                  [result.id]: {
-                                    page: Math.min(
-                                      Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
-                                      (prev[result.id]?.page || 0) + 1
-                                    ),
-                                    expanded: prev[result.id]?.expanded || new Set()
-                                  }
-                                }));
-                              }}
-                              disabled={
-                                (pagination[result.id]?.page || 0) >=
-                                Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
-                              }
-                            >
-                              Next
-                            </Button>
-                          </div>
-                        )}
+                <div className="border-b pt-2 pb-1">
+                  <h2 className="text-lg font-semibold tracking-tight">Concept Distributions</h2>
+                </div>
+
+                {/* Progress Display - Extraction */}
+                {extractionProgress && (
+                  <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {extractionProgress.message || 'Extracting concepts...'}
+                        </span>
+                        <span className="font-medium">
+                          {extractionProgress.processed}/{extractionProgress.total} responses
+                        </span>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
+
+                      <div className="w-full bg-secondary rounded-full h-2">
+                        <div
+                          className="bg-primary rounded-full h-2 transition-all duration-300"
+                          style={{
+                            width: `${(extractionProgress.processed / extractionProgress.total) * 100}%`
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Update the ConceptVisualizations usage */}
+                {conceptDistributions.concepts.size > 0 && (
+                  <ConceptVisualizations conceptData={conceptDistributions} />
+                )}
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>

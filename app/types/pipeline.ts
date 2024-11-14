@@ -68,4 +68,15 @@ export type ProgressUpdate = {
   completedPrompts?: number;
 }
 
-export type ProgressCallback = (update: ProgressUpdate) => void; 
+export type ProgressCallback = (update: ProgressUpdate) => void;
+
+export interface ExtractedConcepts {
+  concepts: string[];
+  race?: string;
+  response: string;
+}
+
+export interface ConceptAnalysis {
+  concepts: Map<string, number>;
+  raceDistributions: Map<string, Map<string, number>>;
+} 

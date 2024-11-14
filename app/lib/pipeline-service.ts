@@ -50,7 +50,7 @@ export async function processBatch(
           responses.push(response);
         }
       } catch (error) {
-        console.error(`Batch ${i} failed for prompt:`, prompt, error);
+        console.log(`Batch ${i} failed for prompt:`, prompt, error);
       }
     }
 
