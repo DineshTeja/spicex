@@ -34,6 +34,7 @@ import { AnalysisResult, PromptResult, ExtractedConcepts, LDATopicResult, Embedd
 import { ConceptVisualizations } from '@/components/ui/ConceptVisualizations';
 import { Input } from "@/components/ui/input";
 import { EmbeddingsVisualizations } from "@/components/ui/EmbeddingsVisualizations";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type SavedAnalysis = {
   id: string;
@@ -437,7 +438,7 @@ export default function Home() {
 
     try {
       setIsExtracting({ llm: true, lda: true, embeddings: true });
-      
+
       // Start both extractions in parallel
       llmAbortController = new AbortController();
       ldaAbortController = new AbortController();
@@ -601,7 +602,7 @@ export default function Home() {
   const extractEmbeddings = async (results: AnalysisResult[]) => {
     try {
       setIsExtracting(prev => ({ ...prev, embeddings: true }));
-      
+
       const response = await fetch('/api/embeddings-extract-concepts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -626,7 +627,7 @@ export default function Home() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(5));
-              
+
               switch (data.type) {
                 case 'extraction_progress':
                   setExtractionProgress(prev => ({
@@ -681,94 +682,94 @@ export default function Home() {
   const ExtractionProgressDisplay = () => {
     return (
       <>
-        {(isExtracting.llm || isExtracting.lda || isExtracting.embeddings || 
+        {(isExtracting.llm || isExtracting.lda || isExtracting.embeddings ||
           extractionProgress.llm || extractionProgress.lda || extractionProgress.embeddings) && (
-          <div className="space-y-4">
-            {/* LLM Progress */}
-            {(isExtracting.llm || extractionProgress.llm) && (
-              <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {extractionProgress.llm?.message || 'Initializing LLM concept extraction...'}
-                    </span>
-                    {extractionProgress.llm && (
-                      <span className="font-medium">
-                        {extractionProgress.llm.processed}/{extractionProgress.llm.total} responses
+            <div className="space-y-4 mb-4">
+              {/* LLM Progress */}
+              {(isExtracting.llm || extractionProgress.llm) && (
+                <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {extractionProgress.llm?.message || 'Initializing LLM concept extraction...'}
                       </span>
-                    )}
-                  </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div
-                      className="bg-primary rounded-full h-2 transition-all duration-300"
-                      style={{
-                        width: extractionProgress.llm 
-                          ? `${(extractionProgress.llm.processed / extractionProgress.llm.total) * 100}%`
-                          : '0%'
-                      }}
-                    />
+                      {extractionProgress.llm && (
+                        <span className="font-medium">
+                          {extractionProgress.llm.processed}/{extractionProgress.llm.total} responses
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary rounded-full h-2 transition-all duration-300"
+                        style={{
+                          width: extractionProgress.llm
+                            ? `${(extractionProgress.llm.processed / extractionProgress.llm.total) * 100}%`
+                            : '0%'
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* LDA Progress */}
-            {(isExtracting.lda || extractionProgress.lda) && (
-              <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {extractionProgress.lda?.message || 'Initializing LDA topic extraction...'}
-                    </span>
-                    {extractionProgress.lda && (
-                      <span className="font-medium">
-                        {extractionProgress.lda.processed}/{extractionProgress.lda.total} responses
+              {/* LDA Progress */}
+              {(isExtracting.lda || extractionProgress.lda) && (
+                <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {extractionProgress.lda?.message || 'Initializing LDA topic extraction...'}
                       </span>
-                    )}
-                  </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div
-                      className="bg-primary rounded-full h-2 transition-all duration-300"
-                      style={{
-                        width: extractionProgress.lda 
-                          ? `${(extractionProgress.lda.processed / extractionProgress.lda.total) * 100}%`
-                          : '0%'
-                      }}
-                    />
+                      {extractionProgress.lda && (
+                        <span className="font-medium">
+                          {extractionProgress.lda.processed}/{extractionProgress.lda.total} responses
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary rounded-full h-2 transition-all duration-300"
+                        style={{
+                          width: extractionProgress.lda
+                            ? `${(extractionProgress.lda.processed / extractionProgress.lda.total) * 100}%`
+                            : '0%'
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Embeddings Progress */}
-            {(isExtracting.embeddings || extractionProgress.embeddings) && (
-              <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {extractionProgress.embeddings?.message || 'Initializing embeddings extraction...'}
-                    </span>
-                    {extractionProgress.embeddings && (
-                      <span className="font-medium">
-                        {extractionProgress.embeddings.processed}/{extractionProgress.embeddings.total} responses
+              {/* Embeddings Progress */}
+              {(isExtracting.embeddings || extractionProgress.embeddings) && (
+                <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {extractionProgress.embeddings?.message || 'Initializing embeddings extraction...'}
                       </span>
-                    )}
-                  </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div
-                      className="bg-primary rounded-full h-2 transition-all duration-300"
-                      style={{
-                        width: extractionProgress.embeddings 
-                          ? `${(extractionProgress.embeddings.processed / extractionProgress.embeddings.total) * 100}%`
-                          : '0%'
-                      }}
-                    />
+                      {extractionProgress.embeddings && (
+                        <span className="font-medium">
+                          {extractionProgress.embeddings.processed}/{extractionProgress.embeddings.total} responses
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary rounded-full h-2 transition-all duration-300"
+                        style={{
+                          width: extractionProgress.embeddings
+                            ? `${(extractionProgress.embeddings.processed / extractionProgress.embeddings.total) * 100}%`
+                            : '0%'
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
       </>
     );
   };
@@ -801,21 +802,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            {/* <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {savedAnalyses.map(analysis => (
-                <Card key={analysis.id} className="p-2 hover:bg-accent cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    <span className="text-sm truncate">{analysis.name}</span>
-                  </div>
-                </Card>
-              ))}
-              {savedAnalyses.length === 0 && (
-                <div className="text-sm text-muted-foreground text-center py-4">
-                  No saved analyses yet
-                </div>
-              )}
-            </div> */}
           </div>
         ) : (
           <div className="w-10 flex flex-col items-center py-2 gap-2 opacity-100 transition-opacity duration-300 ease-in-out">
@@ -865,492 +851,511 @@ export default function Home() {
         />
       )}
 
-      {/* Main Content - Updated styling */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Configuration section - normal width */}
-        <div className="max-w-4xl mx-auto p-4 space-y-4">
-          {/* Section Headers - More compact */}
-          <div className="space-y-3">
-            {/* Model Configuration Section */}
-            <div className="space-y-3">
-              <div
-                className="border-b pb-1 flex justify-between items-center cursor-pointer"
-                onClick={() => setConfigSectionsExpanded(prev => ({
-                  ...prev,
-                  modelConfig: !prev.modelConfig
-                }))}
-              >
-                <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
-                {configSectionsExpanded.modelConfig ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </div>
-
-              {configSectionsExpanded.modelConfig && (
-                <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-medium">Model</Label>
-                    <Select
-                      value={selectedParams.model}
-                      onValueChange={(value) => setSelectedParams(prev => ({
-                        ...prev,
-                        model: value
-                      }))}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Choose an LLM" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pipelineParams.models.map(model => (
-                          <SelectItem key={model} value={model}>
-                            {model}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Parameters Section */}
-            <div className="space-y-3">
-              <div
-                className="border-b pb-1 flex justify-between items-center cursor-pointer"
-                onClick={() => setConfigSectionsExpanded(prev => ({
-                  ...prev,
-                  parameters: !prev.parameters
-                }))}
-              >
-                <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
-                {configSectionsExpanded.parameters ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </div>
-
-              {configSectionsExpanded.parameters && (
-                <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
-                  {/* Parameter sections - More compact */}
-                  <div className="space-y-1">
-                    <Label>Symptom Patterns</Label>
-                    <div className="flex flex-wrap gap-1">
-                      {pipelineParams.symptomPatterns.map(symptom => (
-                        <Badge
-                          key={symptom}
-                          variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setSelectedParams(prev => ({
-                              ...prev,
-                              symptoms: prev.symptoms.includes(symptom)
-                                ? prev.symptoms.filter(s => s !== symptom)
-                                : [...prev.symptoms, symptom]
-                            }));
-                          }}
-                        >
-                          {symptom}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Demographics - More compact */}
-                  <div className="space-y-2">
-                    <Label>Demographics</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
-                        <div key={category} className="space-y-2">
-                          <Label className="capitalize">{category}</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {pipelineParams.demographics[category].map(value => (
-                              <Badge
-                                key={value}
-                                variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
-                                className="cursor-pointer"
-                                onClick={() => {
-                                  setSelectedParams(prev => ({
-                                    ...prev,
-                                    demographics: {
-                                      ...prev.demographics,
-                                      [category]: prev.demographics[category].includes(value)
-                                        ? prev.demographics[category].filter(v => v !== value)
-                                        : [...prev.demographics[category], value]
-                                    }
-                                  }));
-                                }}
-                              >
-                                {value}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Other sections - More compact */}
-                  <div className="space-y-1">
-                    <Label>Application Context</Label>
-                    <Select
-                      value={selectedParams.context}
-                      onValueChange={(value) => setSelectedParams(prev => ({
-                        ...prev,
-                        context: value
-                      }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select context" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pipelineParams.contexts.map(context => (
-                          <SelectItem key={context} value={context}>
-                            {context}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label>Question Types</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {pipelineParams.questionTypes.map(type => (
-                        <Badge
-                          key={type}
-                          variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setSelectedParams(prev => ({
-                              ...prev,
-                              questionTypes: prev.questionTypes.includes(type)
-                                ? prev.questionTypes.filter(t => t !== type)
-                                : [...prev.questionTypes, type]
-                            }));
-                          }}
-                        >
-                          {type}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label>Relevance Options</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {pipelineParams.relevanceOptions.map(option => (
-                        <Badge
-                          key={option}
-                          variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setSelectedParams(prev => ({
-                              ...prev,
-                              relevanceOptions: prev.relevanceOptions.includes(option)
-                                ? prev.relevanceOptions.filter(o => o !== option)
-                                : [...prev.relevanceOptions, option]
-                            }));
-                          }}
-                        >
-                          {option}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons - More compact */}
-            <div className="flex gap-2 pt-3">
-              <Button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing || isProcessingFile}
-                className="flex-1 h-10 font-medium"
-              >
-                {isAnalyzing ? 'Analyzing...' : 'Generate Prompts & Run Analysis'}
-              </Button>
-
-              <div className="relative">
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  disabled={isAnalyzing || isProcessingFile}
-                  className="hidden" // Hide the input
-                />
-                <Button
-                  variant="outline"
-                  disabled={isAnalyzing || isProcessingFile}
-                  className="flex items-center gap-2 h-10"
-                  onClick={handleUploadClick} // Add click handler
+      {/* Main Content - Dynamic Layout */}
+      <div className="flex-1 overflow-hidden">
+        <div className={`
+          ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) 
+            ? 'flex gap-6 h-[100dvh] overflow-hidden'
+            : 'flex justify-center p-6'
+          }
+        `}>
+          {/* Configuration and Analysis Results - Dynamic width and position */}
+          <div className={`
+            space-y-4 overflow-y-auto
+            ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0)
+              ? 'flex-[0.8] min-w-[500px] max-w-[600px] p-6'
+              : 'w-full max-w-4xl'
+            }
+          `}>
+            {/* Configuration section */}
+            <div className="space-y-4">
+              {/* Model Configuration Section */}
+              <div className="space-y-3">
+                <div
+                  className="border-b pb-1 flex justify-between items-center cursor-pointer"
+                  onClick={() => setConfigSectionsExpanded(prev => ({
+                    ...prev,
+                    modelConfig: !prev.modelConfig
+                  }))}
                 >
-                  {isProcessingFile ? (
-                    'Processing...'
+                  <h3 className="text-lg font-semibold tracking-tight">Model Configuration</h3>
+                  {configSectionsExpanded.modelConfig ? (
+                    <ChevronUp className="h-4 w-4" />
                   ) : (
-                    <>
-                      <Upload className="h-4 w-4" />
-                      Load Results
-                    </>
+                    <ChevronDown className="h-4 w-4" />
                   )}
-                </Button>
+                </div>
+
+                {configSectionsExpanded.modelConfig && (
+                  <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">Model</Label>
+                      <Select
+                        value={selectedParams.model}
+                        onValueChange={(value) => setSelectedParams(prev => ({
+                          ...prev,
+                          model: value
+                        }))}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Choose an LLM" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pipelineParams.models.map(model => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <Button
-                variant="outline"
-                onClick={saveAnalysis}
-                disabled={analysisResults.length === 0}
-                className="flex items-center gap-2 h-10"
-              >
-                <Save className="h-4 w-4" />
-                <Download className="h-4 w-4" />
-                Save & Download
-              </Button>
-            </div>
-
-            {/* Progress Display - Analysis */}
-            {progress && (
-              <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{progress.message}</span>
-                    {progress.totalPrompts && (
-                      <span className="font-medium">
-                        {progress.completedPrompts || 0}/{progress.totalPrompts} prompts
-                      </span>
-                    )}
-                  </div>
-
-                  {progress.totalPrompts && (
-                    <div className="w-full bg-secondary rounded-full h-2">
-                      <div
-                        className="bg-primary rounded-full h-2 transition-all duration-300"
-                        style={{
-                          width: `${((progress.completedPrompts || 0) / progress.totalPrompts) * 100}%`
-                        }}
-                      />
-                    </div>
+              {/* Parameters Section */}
+              <div className="space-y-3">
+                <div
+                  className="border-b pb-1 flex justify-between items-center cursor-pointer"
+                  onClick={() => setConfigSectionsExpanded(prev => ({
+                    ...prev,
+                    parameters: !prev.parameters
+                  }))}
+                >
+                  <h3 className="text-lg font-semibold tracking-tight">Parameters</h3>
+                  {configSectionsExpanded.parameters ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
                   )}
+                </div>
 
-                  {progress.currentPrompt && (
-                    <div className="text-sm text-muted-foreground mt-2">
-                      <p className="truncate">Current prompt: {progress.currentPrompt}</p>
-                      {progress.iteration && (
-                        <p>Iteration: {progress.iteration}</p>
+                {configSectionsExpanded.parameters && (
+                  <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
+                    {/* Parameter sections - More compact */}
+                    <div className="space-y-1">
+                      <Label>Symptom Patterns</Label>
+                      <div className="flex flex-wrap gap-1">
+                        {pipelineParams.symptomPatterns.map(symptom => (
+                          <Badge
+                            key={symptom}
+                            variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                symptoms: prev.symptoms.includes(symptom)
+                                  ? prev.symptoms.filter(s => s !== symptom)
+                                  : [...prev.symptoms, symptom]
+                              }));
+                            }}
+                          >
+                            {symptom}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Demographics - More compact */}
+                    <div className="space-y-2">
+                      <Label>Demographics</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(pipelineParams.demographics) as Array<keyof typeof pipelineParams.demographics>).map(category => (
+                          <div key={category} className="space-y-2">
+                            <Label className="capitalize">{category}</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {pipelineParams.demographics[category].map(value => (
+                                <Badge
+                                  key={value}
+                                  variant={selectedParams.demographics[category].includes(value) ? "default" : "outline"}
+                                  className="cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedParams(prev => ({
+                                      ...prev,
+                                      demographics: {
+                                        ...prev.demographics,
+                                        [category]: prev.demographics[category].includes(value)
+                                          ? prev.demographics[category].filter(v => v !== value)
+                                          : [...prev.demographics[category], value]
+                                      }
+                                    }));
+                                  }}
+                                >
+                                  {value}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Other sections - More compact */}
+                    <div className="space-y-1">
+                      <Label>Application Context</Label>
+                      <Select
+                        value={selectedParams.context}
+                        onValueChange={(value) => setSelectedParams(prev => ({
+                          ...prev,
+                          context: value
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select context" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pipelineParams.contexts.map(context => (
+                            <SelectItem key={context} value={context}>
+                              {context}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>Question Types</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {pipelineParams.questionTypes.map(type => (
+                          <Badge
+                            key={type}
+                            variant={selectedParams.questionTypes.includes(type) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                questionTypes: prev.questionTypes.includes(type)
+                                  ? prev.questionTypes.filter(t => t !== type)
+                                  : [...prev.questionTypes, type]
+                              }));
+                            }}
+                          >
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>Relevance Options</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {pipelineParams.relevanceOptions.map(option => (
+                          <Badge
+                            key={option}
+                            variant={selectedParams.relevanceOptions.includes(option) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                relevanceOptions: prev.relevanceOptions.includes(option)
+                                  ? prev.relevanceOptions.filter(o => o !== option)
+                                  : [...prev.relevanceOptions, option]
+                              }));
+                            }}
+                          >
+                            {option}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-3">
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing || isProcessingFile}
+                  className="flex-1 h-10 font-medium"
+                >
+                  {isAnalyzing ? 'Analyzing...' : 'Generate Prompts & Run Analysis'}
+                </Button>
+
+                <div className="relative">
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    disabled={isAnalyzing || isProcessingFile}
+                    className="hidden" // Hide the input
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={isAnalyzing || isProcessingFile}
+                    className="flex items-center gap-2 h-10"
+                    onClick={handleUploadClick} // Add click handler
+                  >
+                    {isProcessingFile ? (
+                      'Processing...'
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4" />
+                        Load Existing Results
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Progress Display - Analysis */}
+              {progress && (
+                <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{progress.message}</span>
+                      {progress.totalPrompts && (
+                        <span className="font-medium">
+                          {progress.completedPrompts || 0}/{progress.totalPrompts} prompts
+                        </span>
                       )}
                     </div>
-                  )}
+
+                    {progress.totalPrompts && (
+                      <div className="w-full bg-secondary rounded-full h-2">
+                        <div
+                          className="bg-primary rounded-full h-2 transition-all duration-300"
+                          style={{
+                            width: `${((progress.completedPrompts || 0) / progress.totalPrompts) * 100}%`
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {progress.currentPrompt && (
+                      <div className="text-sm text-muted-foreground mt-2">
+                        <p className="truncate">Current prompt: {progress.currentPrompt}</p>
+                        {progress.iteration && (
+                          <p>Iteration: {progress.iteration}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Analysis Results section */}
+            {analysisResults.length > 0 && (
+              <div className="space-y-4">
+                <div className="border-b pb-1 flex justify-between items-center">
+                  <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={saveAnalysis}
+                    className="h-8 px-2 flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="text-xs font-medium">Save</span>
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {analysisResults.map(result => (
+                    <Card key={result.id} className="border">
+                      <CardContent className="p-4 space-y-3">
+                        {/* Result Header */}
+                        <div className="flex items-center justify-between pb-2 border-b">
+                          <h3 className="font-medium tracking-tight">{result.modelName}</h3>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">
+                          {result.details}
+                        </p>
+
+                        {/* Demographics Badges */}
+                        <div className="flex flex-wrap gap-1 pb-2">
+                          {result.demographics.map(demo => (
+                            <Badge
+                              key={demo}
+                              variant="outline"
+                              className="rounded-md"
+                            >
+                              {demo}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        {/* Responses Section */}
+                        <div className="space-y-2">
+                          <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
+                          {result.prompts
+                            .slice(
+                              (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
+                              ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
+                            )
+                            .map((promptResult: PromptResult, idx: number) => {
+                              const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
+                              const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+
+                              return (
+                                <div key={idx} className="border rounded-lg p-3 space-y-2">
+                                  <div
+                                    className="flex items-center justify-between cursor-pointer"
+                                    onClick={() => {
+                                      setPagination(prev => {
+                                        const currentExpanded = new Set(prev[result.id]?.expanded || []);
+                                        if (isExpanded) {
+                                          currentExpanded.delete(absoluteIdx);
+                                        } else {
+                                          currentExpanded.add(absoluteIdx);
+                                        }
+                                        return {
+                                          ...prev,
+                                          [result.id]: {
+                                            page: prev[result.id]?.page || 0,
+                                            expanded: currentExpanded
+                                          }
+                                        };
+                                      });
+                                    }}
+                                  >
+                                    <p className="text-sm font-medium">{promptResult.text}</p>
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                    )}
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="space-y-1 pt-2">
+                                      {promptResult.responses.map((response: string, rIdx: number) => (
+                                        <p key={rIdx} className="text-sm text-muted-foreground">
+                                          Response {rIdx + 1}: {response}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+
+                        {/* Pagination - More compact */}
+                        {result.prompts.length > ITEMS_PER_PAGE && (
+                          <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPagination(prev => ({
+                                  ...prev,
+                                  [result.id]: {
+                                    page: Math.max(0, (prev[result.id]?.page || 0) - 1),
+                                    expanded: prev[result.id]?.expanded || new Set()
+                                  }
+                                }));
+                              }}
+                              disabled={(pagination[result.id]?.page || 0) === 0}
+                            >
+                              Previous
+                            </Button>
+
+                            <span className="flex items-center text-sm text-muted-foreground">
+                              Page {(pagination[result.id]?.page || 0) + 1} of{' '}
+                              {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
+                            </span>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPagination(prev => ({
+                                  ...prev,
+                                  [result.id]: {
+                                    page: Math.min(
+                                      Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
+                                      (prev[result.id]?.page || 0) + 1
+                                    ),
+                                    expanded: prev[result.id]?.expanded || new Set()
+                                  }
+                                }));
+                              }}
+                              disabled={
+                                (pagination[result.id]?.page || 0) >=
+                                Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
+                              }
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Results section - full width */}
-          {analysisResults.length > 0 && (
-            <>
-              <div className="max-w-7xl mx-auto py-4 space-y-4">
-                <div className="space-y-3">
-                  <div className="border-b pb-1">
-                    <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
+          {/* Right Column - Concept Extraction Results */}
+          {(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) && (
+            <div className="flex-1 border-l pl-6 flex flex-col h-[100dvh] overflow-hidden">
+              <div className="flex flex-col h-full">
+                <div className="p-6 pb-4">
+                  <div className="border-b pb-1 mb-4">
+                    <h2 className="text-lg font-semibold tracking-tight">Concept Analysis</h2>
                   </div>
 
-                  <div className="space-y-2">
-                    {analysisResults.map(result => (
-                      <Card key={result.id} className="border">
-                        <CardContent className="p-4 space-y-3">
-                          {/* Result Header */}
-                          <div className="flex items-center justify-between pb-2 border-b">
-                            <h3 className="font-medium tracking-tight">{result.modelName}</h3>
-                            <Badge
-                              variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
-                              className="rounded-md px-2 py-1"
-                            >
-                              Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
-                            </Badge>
-                          </div>
-
-                          <p className="text-sm text-muted-foreground">
-                            {result.details}
-                          </p>
-
-                          {/* Demographics Badges */}
-                          <div className="flex flex-wrap gap-1 pb-2">
-                            {result.demographics.map(demo => (
-                              <Badge
-                                key={demo}
-                                variant="outline"
-                                className="rounded-md"
-                              >
-                                {demo}
-                              </Badge>
-                            ))}
-                          </div>
-
-                          {/* Responses Section */}
-                          <div className="space-y-2">
-                            <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
-                            {result.prompts
-                              .slice(
-                                (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
-                                ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
-                              )
-                              .map((promptResult: PromptResult, idx: number) => {
-                                const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
-                                const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
-
-                                return (
-                                  <div key={idx} className="border rounded-lg p-3 space-y-2">
-                                    <div
-                                      className="flex items-center justify-between cursor-pointer"
-                                      onClick={() => {
-                                        setPagination(prev => {
-                                          const currentExpanded = new Set(prev[result.id]?.expanded || []);
-                                          if (isExpanded) {
-                                            currentExpanded.delete(absoluteIdx);
-                                          } else {
-                                            currentExpanded.add(absoluteIdx);
-                                          }
-                                          return {
-                                            ...prev,
-                                            [result.id]: {
-                                              page: prev[result.id]?.page || 0,
-                                              expanded: currentExpanded
-                                            }
-                                          };
-                                        });
-                                      }}
-                                    >
-                                      <p className="text-sm font-medium">{promptResult.text}</p>
-                                      {isExpanded ? (
-                                        <ChevronUp className="h-4 w-4 flex-shrink-0" />
-                                      ) : (
-                                        <ChevronDown className="h-4 w-4 flex-shrink-0" />
-                                      )}
-                                    </div>
-
-                                    {isExpanded && (
-                                      <div className="space-y-1 pt-2">
-                                        {promptResult.responses.map((response: string, rIdx: number) => (
-                                          <p key={rIdx} className="text-sm text-muted-foreground">
-                                            Response {rIdx + 1}: {response}
-                                          </p>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-
-                            {/* Pagination - More compact */}
-                            {result.prompts.length > ITEMS_PER_PAGE && (
-                              <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setPagination(prev => ({
-                                      ...prev,
-                                      [result.id]: {
-                                        page: Math.max(0, (prev[result.id]?.page || 0) - 1),
-                                        expanded: prev[result.id]?.expanded || new Set()
-                                      }
-                                    }));
-                                  }}
-                                  disabled={(pagination[result.id]?.page || 0) === 0}
-                                >
-                                  Previous
-                                </Button>
-
-                                <span className="flex items-center text-sm text-muted-foreground">
-                                  Page {(pagination[result.id]?.page || 0) + 1} of{' '}
-                                  {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
-                                </span>
-
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setPagination(prev => ({
-                                      ...prev,
-                                      [result.id]: {
-                                        page: Math.min(
-                                          Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
-                                          (prev[result.id]?.page || 0) + 1
-                                        ),
-                                        expanded: prev[result.id]?.expanded || new Set()
-                                      }
-                                    }));
-                                  }}
-                                  disabled={
-                                    (pagination[result.id]?.page || 0) >=
-                                    Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
-                                  }
-                                >
-                                  Next
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-
-                  <div className="border-b pt-2 pb-1">
-                    <h2 className="text-lg font-semibold tracking-tight">Concept Distributions</h2>
-                  </div>
-
-                  {/* Progress Display - Extraction */}
                   <ExtractionProgressDisplay />
+                </div>
 
-                  {/* Visualizations section - LLM concepts in two columns, LDA below */}
-                  {conceptDistributions.concepts.size > 0 && (
-                    <div className="space-y-6">
-                      {/* LLM Concept Visualizations */}
-                      <div>
-                        <h3 className="text-lg font-semibold mb-4">LLM Concept Analysis</h3>
-                        <ConceptVisualizations conceptData={conceptDistributions} />
-                      </div>
+                <div className="flex-1 min-h-0">
+                  <Tabs defaultValue="llm" className="w-full h-full flex flex-col">
+                    <div className="px-6">
+                      <TabsList className="grid w-full grid-cols-3 mb-4">
+                        <TabsTrigger value="llm">LLM Concepts</TabsTrigger>
+                        <TabsTrigger value="lda">LDA Concepts</TabsTrigger>
+                        <TabsTrigger value="embeddings">Embeddings Concepts</TabsTrigger>
+                      </TabsList>
+                    </div>
 
-                      {/* LDA Topic Analysis - Full width below */}
-                      {ldaResults && (
-                        <div className="border-none">
-                          <h3 className="text-lg font-semibold mb-4">LDA Topic Analysis</h3>
-                            <div className="space-y-6 pt-4 border-none">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {ldaResults.topics.map((topic) => (
-                                    <Card key={topic.topic_id} className="p-4">
-                                      <h4 className="font-medium mb-2">Topic {topic.topic_id + 1}</h4>
-                                      <div className="space-y-2">
-                                        {topic.words.map((word, idx) => (
-                                          <div key={word} className="flex justify-between items-center">
-                                            <span>{word}</span>
-                                            <Badge variant="secondary">
-                                              {(topic.weights[idx] * 100).toFixed(1)}%
-                                            </Badge>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </Card>
-                                  ))}
-                                </div>
-                              </div>
+                    <TabsContent value="llm" className="flex-1 overflow-y-auto px-6 min-h-0">
+                      {conceptDistributions.concepts.size > 0 && (
+                        <div className="space-y-6 pb-6">
+                          <ConceptVisualizations conceptData={conceptDistributions} />
                         </div>
                       )}
+                    </TabsContent>
 
-                      {/* Embeddings Analysis */}
-                      {embeddingsResults.length > 0 && (
-                        <EmbeddingsVisualizations results={embeddingsResults} />
+                    <TabsContent value="lda" className="flex-1 overflow-y-auto px-6 min-h-0">
+                      {ldaResults && (
+                        <div className="space-y-6 pb-6">
+                          <div className="grid grid-cols-2 gap-4">
+                            {ldaResults.topics.map((topic) => (
+                              <Card key={topic.topic_id} className="p-4">
+                                <h4 className="font-medium mb-2">Topic {topic.topic_id + 1}</h4>
+                                <div className="space-y-2">
+                                  {topic.words.map((word, idx) => (
+                                    <div key={word} className="flex justify-between items-center">
+                                      <span>{word}</span>
+                                      <Badge variant="secondary">
+                                        {(topic.weights[idx] * 100).toFixed(1)}%
+                                      </Badge>
+                                    </div>
+                                  ))}
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  )}
+                    </TabsContent>
+
+                    <TabsContent value="embeddings" className="flex-1 overflow-y-auto px-6 min-h-0">
+                      {embeddingsResults.length > 0 && (
+                        <div className="w-full pb-6">
+                          <EmbeddingsVisualizations results={embeddingsResults} />
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
