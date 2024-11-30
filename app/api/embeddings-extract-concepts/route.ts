@@ -44,11 +44,16 @@ export async function POST(req: Request) {
         pythonProcess.stdin.write(JSON.stringify(responses));
         pythonProcess.stdin.end();
 
-        const outputData = '';
+        // Buffer to accumulate data from stdout
+        let stdoutData = '';
 
         pythonProcess.stdout.on('data', (data) => {
-          const lines = data.toString().split('\n');
-          
+          stdoutData += data.toString();
+          const lines = stdoutData.split('\n');
+
+          // Keep the last partial line in stdoutData
+          stdoutData = lines.pop() || '';
+
           for (const line of lines) {
             if (!line.trim()) continue;
             
@@ -80,67 +85,40 @@ export async function POST(req: Request) {
                   encoder.encode(
                     `data: ${JSON.stringify({
                       type: 'embeddings_concepts',
-                      cluster_concepts: parsedData
+                      cluster_concepts: parsedData,
+                      progress: { processed: responses.length, total: responses.length }
                     })}\n\n`
                   )
                 );
               }
             } catch (error) {
-              console.error('Error parsing Python output:', error);
+              console.error('Error parsing Python output:', error, 'Line:', line);
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'error',
+                    error: 'Error parsing data from Python script'
+                  })}\n\n`
+                )
+              );
             }
           }
         });
 
         pythonProcess.stderr.on('data', (data) => {
           console.error(`Python Error: ${data}`);
-          if (data.toString().toLowerCase().includes('error')) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: 'error',
-                  error: data.toString()
-                })}\n\n`
-              )
-            );
-          }
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'error',
+                error: data.toString()
+              })}\n\n`
+            )
+          );
         });
 
         pythonProcess.on('close', (code) => {
-          if (code === 0) {
-            try {
-              const embeddingsResults = JSON.parse(outputData);
-              
-              // Send the cluster concepts
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: 'embeddings_concepts',
-                    cluster_concepts: embeddingsResults,
-                    progress: { processed: responses.length, total: responses.length }
-                  })}\n\n`
-                )
-              );
-
-              // Send completion message
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: 'complete',
-                    message: 'Embeddings concept extraction completed'
-                  })}\n\n`
-                )
-              );
-            } catch {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: 'error',
-                    error: 'Failed to parse Python output'
-                  })}\n\n`
-                )
-              );
-            }
-          } else {
+          if (code !== 0) {
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({

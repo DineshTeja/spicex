@@ -67,17 +67,19 @@ def extract_concepts_with_embeddings(input_data):
             cluster_responses = np.array(responses)[cluster_mask]
             
             if len(cluster_responses) > 0:
-                # Get representative responses (top 2)
-                top_responses = cluster_responses[:2].tolist()
+                # Get all responses in the cluster as representative responses
+                representative_responses = cluster_responses.tolist()
                 
                 # Calculate distribution
-                distribution = {race: int(np.sum((np.array(races)[cluster_mask] == race))) 
-                              for race in set(races)}
+                distribution = {
+                    race: int(np.sum((np.array(races)[cluster_mask] == race)))
+                    for race in set(races)
+                }
                 
                 cluster_concepts.append({
                     "cluster_id": int(i),
                     "size": int(np.sum(cluster_mask)),
-                    "representative_responses": top_responses,
+                    "representative_responses": representative_responses,
                     "distribution": distribution
                 })
         
