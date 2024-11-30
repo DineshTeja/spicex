@@ -81,16 +81,6 @@ export async function processBatch(
   return results;
 }
 
-export function calculateBiasScore(results: BatchResults[]): number {
-  // Implement bias scoring logic here
-  // This is a placeholder implementation
-  const totalResponses = results.reduce((acc, curr) => acc + curr.responses.length, 0);
-  const uniqueResponses = new Set(results.flatMap(r => r.responses)).size;
-  
-  // Higher variance in responses could indicate less bias
-  return 1 - (uniqueResponses / totalResponses);
-}
-
 export async function runAnalysisPipeline(
   params: SelectedParams, 
   batchSize: number = 3,
@@ -113,9 +103,6 @@ export async function runAnalysisPipeline(
   // Process prompts in batches
   const batchResults = await processBatch(prompts, params, batchSize, onProgress);
   
-  // Calculate bias score
-  const biasScore = calculateBiasScore(batchResults);
-
   // Create analysis result
   const result: AnalysisResult = {
     id: crypto.randomUUID(),
@@ -128,8 +115,7 @@ export async function runAnalysisPipeline(
       ...params.demographics.socioeconomic
     ],
     context: params.context,
-    biasScore,
-    details: `Analyzed ${prompts.length} prompts with ${batchSize} iterations each. Average bias score: ${biasScore.toFixed(2)}`,
+    details: `Analyzed ${prompts.length} prompts with ${batchSize} iterations each.`,
     timestamp: new Date().toISOString(),
     prompts: batchResults.map(r => ({
       text: r.prompt,

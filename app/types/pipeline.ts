@@ -53,7 +53,6 @@ export type AnalysisResult = {
   concept: string;
   demographics: string[];
   context: string;
-  biasScore: number;
   details: string;
   timestamp: string;
   prompts: PromptResult[];
