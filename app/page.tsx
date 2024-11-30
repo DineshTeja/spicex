@@ -30,9 +30,10 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useHotkeys } from 'react-hotkeys-hook';
-import { AnalysisResult, PromptResult, ExtractedConcepts } from './types/pipeline';
+import { AnalysisResult, PromptResult, ExtractedConcepts, LDATopicResult, EmbeddingsResult } from './types/pipeline';
 import { ConceptVisualizations } from '@/components/ui/ConceptVisualizations';
 import { Input } from "@/components/ui/input";
+import { EmbeddingsVisualizations } from "@/components/ui/EmbeddingsVisualizations";
 
 type SavedAnalysis = {
   id: string;
@@ -169,6 +170,14 @@ type PaginationState = {
 
 const ITEMS_PER_PAGE = 5;
 
+// Update the extraction progress type
+type ExtractionProgress = {
+  processed: number;
+  total: number;
+  message?: string;
+  type: 'llm' | 'lda' | 'embeddings';
+};
+
 export default function Home() {
   const [pipelineParams] = useState<PipelineParams>(DEFAULT_PIPELINE_PARAMS);
   const [selectedParams, setSelectedParams] = useState<SelectedParams>({
@@ -223,12 +232,28 @@ export default function Home() {
   // Add new state for file upload
   const [isProcessingFile, setIsProcessingFile] = useState(false);
 
-  // Add new state for extraction progress
+  // Update extraction progress state to handle multiple types
   const [extractionProgress, setExtractionProgress] = useState<{
-    processed: number;
-    total: number;
-    message?: string;
+    llm?: ExtractionProgress;
+    lda?: ExtractionProgress;
+    embeddings?: ExtractionProgress;
+  }>({});
+
+  // Add extraction loading state
+  const [isExtracting, setIsExtracting] = useState<{
+    llm: boolean;
+    lda: boolean;
+    embeddings: boolean;
+  }>({ llm: false, lda: false, embeddings: false });
+
+  // Add new state for LDA results
+  const [ldaResults, setLdaResults] = useState<{
+    topics: LDATopicResult[];
+    distributions: number[][];
   } | null>(null);
+
+  // Add this state for embeddings results
+  const [embeddingsResults, setEmbeddingsResults] = useState<EmbeddingsResult[]>([]);
 
   // Mobile responsiveness
   useEffect(() => {
@@ -378,8 +403,8 @@ export default function Home() {
       const uploadedResults = JSON.parse(text);
 
       // Check if it's a single analysis or array of analyses
-      const results = uploadedResults.results || 
-                     (Array.isArray(uploadedResults) ? uploadedResults : [uploadedResults]);
+      const results = uploadedResults.results ||
+        (Array.isArray(uploadedResults) ? uploadedResults : [uploadedResults]);
 
       if (!Array.isArray(results) || !results.length) {
         throw new Error('Invalid results format');
@@ -405,46 +430,68 @@ export default function Home() {
     }
   }, []);
 
-  // Add a new helper function for concept extraction
+  // Update the extractConcepts function
   const extractConcepts = async (results: AnalysisResult[]) => {
-    let abortController: AbortController | null = null;
+    let llmAbortController: AbortController | null = null;
+    let ldaAbortController: AbortController | null = null;
 
     try {
-      abortController = new AbortController();
-      const conceptResponse = await fetch('/api/extract-concepts', {
+      setIsExtracting({ llm: true, lda: true, embeddings: true });
+      
+      // Start both extractions in parallel
+      llmAbortController = new AbortController();
+      ldaAbortController = new AbortController();
+
+      // LLM Extraction
+      const llmPromise = fetch('/api/llm-extract-concepts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(results),
-        signal: abortController.signal
+        signal: llmAbortController.signal
       });
 
-      if (!conceptResponse.ok) throw new Error('Concept extraction failed');
+      // LDA Extraction
+      const ldaPromise = fetch('/api/lda-extract-concepts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(results),
+        signal: ldaAbortController.signal
+      });
 
-      const reader = conceptResponse.body?.getReader();
-      if (!reader) throw new Error('Failed to get concept reader');
+      const [llmResponse, ldaResponse] = await Promise.all([llmPromise, ldaPromise]);
+
+      if (!llmResponse.ok || !ldaResponse.ok) {
+        throw new Error('One or more extraction methods failed');
+      }
 
       const decoder = new TextDecoder();
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      // Update LLM progress handling
+      const llmReader = llmResponse.body?.getReader();
+      if (llmReader) {
+        try {
+          while (true) {
+            const { done, value } = await llmReader.read();
+            if (done) break;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
                 const data = JSON.parse(line.slice(5));
 
                 switch (data.type) {
                   case 'extraction_progress':
-                    setExtractionProgress({
-                      processed: data.progress.processed,
-                      total: data.progress.total,
-                      message: data.message
-                    });
+                    setExtractionProgress(prev => ({
+                      ...prev,
+                      llm: {
+                        processed: data.progress.processed,
+                        total: data.progress.total,
+                        message: data.message,
+                        type: 'llm'
+                      }
+                    }));
                     break;
 
                   case 'concepts':
@@ -469,36 +516,156 @@ export default function Home() {
                     break;
 
                   case 'complete':
-                    toast.success('Concept analysis completed');
-                    break;
-
-                  case 'error':
-                    toast.error(`Error: ${data.error}`);
+                    setIsExtracting(prev => ({ ...prev, llm: false }));
+                    setExtractionProgress(prev => ({ ...prev, llm: undefined }));
                     break;
                 }
-              } catch (parseError) {
-                console.error('Error parsing SSE data:', parseError);
               }
             }
           }
+        } finally {
+          llmReader.releaseLock();
         }
-      } finally {
-        reader.releaseLock();
+      }
+
+      // Update LDA progress handling
+      const ldaReader = ldaResponse.body?.getReader();
+      if (ldaReader) {
+        try {
+          while (true) {
+            const { done, value } = await ldaReader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = JSON.parse(line.slice(5));
+
+                switch (data.type) {
+                  case 'extraction_progress':
+                    setExtractionProgress(prev => ({
+                      ...prev,
+                      lda: {
+                        processed: data.progress.processed,
+                        total: data.progress.total,
+                        message: data.message,
+                        type: 'lda'
+                      }
+                    }));
+                    break;
+
+                  case 'lda_concepts':
+                    setLdaResults({
+                      topics: data.topics,
+                      distributions: data.distributions
+                    });
+                    break;
+
+                  case 'complete':
+                    setIsExtracting(prev => ({ ...prev, lda: false }));
+                    setExtractionProgress(prev => ({ ...prev, lda: undefined }));
+                    break;
+
+                  case 'error':
+                    toast.error(`LDA Error: ${data.error}`);
+                    setIsExtracting(prev => ({ ...prev, lda: false }));
+                    break;
+                }
+              }
+            }
+          }
+        } finally {
+          ldaReader.releaseLock();
+        }
+      }
+
+      // Add embeddings extraction
+      await extractEmbeddings(results);
+
+    } catch (error) {
+      console.error('Concept extraction failed:', error);
+      toast.error('Concept extraction failed', {
+        description: error instanceof Error ? error.message : 'Unknown error'
+      });
+    } finally {
+      setIsExtracting({ llm: false, lda: false, embeddings: false });
+      setExtractionProgress({});
+      if (llmAbortController) llmAbortController.abort();
+      if (ldaAbortController) ldaAbortController.abort();
+    }
+  };
+
+  // Update the extractEmbeddings function
+  const extractEmbeddings = async (results: AnalysisResult[]) => {
+    try {
+      setIsExtracting(prev => ({ ...prev, embeddings: true }));
+      
+      const response = await fetch('/api/embeddings-extract-concepts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(results)
+      });
+
+      if (!response.ok) throw new Error('Embeddings extraction failed');
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Failed to get response reader');
+
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(5));
+              
+              switch (data.type) {
+                case 'extraction_progress':
+                  setExtractionProgress(prev => ({
+                    ...prev,
+                    embeddings: {
+                      processed: data.progress.processed,
+                      total: data.progress.total,
+                      message: data.message,
+                      type: 'embeddings'
+                    }
+                  }));
+                  break;
+
+                case 'embeddings_concepts':
+                  if (Array.isArray(data.cluster_concepts)) {
+                    setEmbeddingsResults(data.cluster_concepts);
+                  }
+                  break;
+
+                case 'complete':
+                  setIsExtracting(prev => ({ ...prev, embeddings: false }));
+                  setExtractionProgress(prev => ({ ...prev, embeddings: undefined }));
+                  break;
+
+                case 'error':
+                  toast.error(`Embeddings Error: ${data.error}`);
+                  setIsExtracting(prev => ({ ...prev, embeddings: false }));
+                  break;
+              }
+            } catch (error) {
+              console.error('Error parsing embeddings data:', error);
+            }
+          }
+        }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Extraction was aborted');
-      } else {
-        console.error('Concept extraction failed:', error);
-        toast.error('Concept extraction failed', {
-          description: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    } finally {
-      setExtractionProgress(null);
-      if (abortController) {
-        abortController.abort();
-      }
+      console.error('Embeddings extraction failed:', error);
+      toast.error('Failed to extract embeddings');
+      setIsExtracting(prev => ({ ...prev, embeddings: false }));
     }
   };
 
@@ -508,6 +675,102 @@ export default function Home() {
   // Add click handler for the button
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  // Update the ExtractionProgressDisplay component
+  const ExtractionProgressDisplay = () => {
+    return (
+      <>
+        {(isExtracting.llm || isExtracting.lda || isExtracting.embeddings || 
+          extractionProgress.llm || extractionProgress.lda || extractionProgress.embeddings) && (
+          <div className="space-y-4">
+            {/* LLM Progress */}
+            {(isExtracting.llm || extractionProgress.llm) && (
+              <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {extractionProgress.llm?.message || 'Initializing LLM concept extraction...'}
+                    </span>
+                    {extractionProgress.llm && (
+                      <span className="font-medium">
+                        {extractionProgress.llm.processed}/{extractionProgress.llm.total} responses
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div
+                      className="bg-primary rounded-full h-2 transition-all duration-300"
+                      style={{
+                        width: extractionProgress.llm 
+                          ? `${(extractionProgress.llm.processed / extractionProgress.llm.total) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* LDA Progress */}
+            {(isExtracting.lda || extractionProgress.lda) && (
+              <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {extractionProgress.lda?.message || 'Initializing LDA topic extraction...'}
+                    </span>
+                    {extractionProgress.lda && (
+                      <span className="font-medium">
+                        {extractionProgress.lda.processed}/{extractionProgress.lda.total} responses
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div
+                      className="bg-primary rounded-full h-2 transition-all duration-300"
+                      style={{
+                        width: extractionProgress.lda 
+                          ? `${(extractionProgress.lda.processed / extractionProgress.lda.total) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Embeddings Progress */}
+            {(isExtracting.embeddings || extractionProgress.embeddings) && (
+              <div className="space-y-2 p-4 bg-muted rounded-lg border">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {extractionProgress.embeddings?.message || 'Initializing embeddings extraction...'}
+                    </span>
+                    {extractionProgress.embeddings && (
+                      <span className="font-medium">
+                        {extractionProgress.embeddings.processed}/{extractionProgress.embeddings.total} responses
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div
+                      className="bg-primary rounded-full h-2 transition-all duration-300"
+                      style={{
+                        width: extractionProgress.embeddings 
+                          ? `${(extractionProgress.embeddings.processed / extractionProgress.embeddings.total) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -604,12 +867,13 @@ export default function Home() {
 
       {/* Main Content - Updated styling */}
       <div className="flex-1 overflow-y-auto">
+        {/* Configuration section - normal width */}
         <div className="max-w-4xl mx-auto p-4 space-y-4">
           {/* Section Headers - More compact */}
           <div className="space-y-3">
             {/* Model Configuration Section */}
             <div className="space-y-3">
-              <div 
+              <div
                 className="border-b pb-1 flex justify-between items-center cursor-pointer"
                 onClick={() => setConfigSectionsExpanded(prev => ({
                   ...prev,
@@ -653,7 +917,7 @@ export default function Home() {
 
             {/* Parameters Section */}
             <div className="space-y-3">
-              <div 
+              <div
                 className="border-b pb-1 flex justify-between items-center cursor-pointer"
                 onClick={() => setConfigSectionsExpanded(prev => ({
                   ...prev,
@@ -809,7 +1073,7 @@ export default function Home() {
               >
                 {isAnalyzing ? 'Analyzing...' : 'Generate Prompts & Run Analysis'}
               </Button>
-              
+
               <div className="relative">
                 <Input
                   ref={fileInputRef}
@@ -885,189 +1149,206 @@ export default function Home() {
             )}
           </div>
 
-          {/* Results Display - More compact */}
+          {/* Results section - full width */}
           {analysisResults.length > 0 && (
             <>
-              <div className="space-y-3">
-                <div className="border-b pb-1">
-                  <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
-                </div>
+              <div className="max-w-7xl mx-auto py-4 space-y-4">
+                <div className="space-y-3">
+                  <div className="border-b pb-1">
+                    <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
+                  </div>
 
-                <div className="space-y-2">
-                  {analysisResults.map(result => (
-                    <Card key={result.id} className="border">
-                      <CardContent className="p-4 space-y-3">
-                        {/* Result Header */}
-                        <div className="flex items-center justify-between pb-2 border-b">
-                          <h3 className="font-medium tracking-tight">{result.modelName}</h3>
-                          <Badge
-                            variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
-                            className="rounded-md px-2 py-1"
-                          >
-                            Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
-                          </Badge>
-                        </div>
-
-                        <p className="text-sm text-muted-foreground">
-                          {result.details}
-                        </p>
-
-                        {/* Demographics Badges */}
-                        <div className="flex flex-wrap gap-1 pb-2">
-                          {result.demographics.map(demo => (
+                  <div className="space-y-2">
+                    {analysisResults.map(result => (
+                      <Card key={result.id} className="border">
+                        <CardContent className="p-4 space-y-3">
+                          {/* Result Header */}
+                          <div className="flex items-center justify-between pb-2 border-b">
+                            <h3 className="font-medium tracking-tight">{result.modelName}</h3>
                             <Badge
-                              key={demo}
-                              variant="outline"
-                              className="rounded-md"
+                              variant={result.biasScore > 0.5 ? "destructive" : "secondary"}
+                              className="rounded-md px-2 py-1"
                             >
-                              {demo}
+                              Bias Score: {result.biasScore ? result.biasScore.toFixed(2) : 'N/A'}
                             </Badge>
-                          ))}
-                        </div>
+                          </div>
 
-                        {/* Responses Section */}
-                        <div className="space-y-2">
-                          <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
-                          {result.prompts
-                            .slice(
-                              (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
-                              ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
-                            )
-                            .map((promptResult: PromptResult, idx: number) => {
-                              const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
-                              const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+                          <p className="text-sm text-muted-foreground">
+                            {result.details}
+                          </p>
 
-                              return (
-                                <div key={idx} className="border rounded-lg p-3 space-y-2">
-                                  <div
-                                    className="flex items-center justify-between cursor-pointer"
-                                    onClick={() => {
-                                      setPagination(prev => {
-                                        const currentExpanded = new Set(prev[result.id]?.expanded || []);
-                                        if (isExpanded) {
-                                          currentExpanded.delete(absoluteIdx);
-                                        } else {
-                                          currentExpanded.add(absoluteIdx);
-                                        }
-                                        return {
-                                          ...prev,
-                                          [result.id]: {
-                                            page: prev[result.id]?.page || 0,
-                                            expanded: currentExpanded
+                          {/* Demographics Badges */}
+                          <div className="flex flex-wrap gap-1 pb-2">
+                            {result.demographics.map(demo => (
+                              <Badge
+                                key={demo}
+                                variant="outline"
+                                className="rounded-md"
+                              >
+                                {demo}
+                              </Badge>
+                            ))}
+                          </div>
+
+                          {/* Responses Section */}
+                          <div className="space-y-2">
+                            <h4 className="font-medium tracking-tight pb-1 border-b">Responses</h4>
+                            {result.prompts
+                              .slice(
+                                (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE,
+                                ((pagination[result.id]?.page || 0) + 1) * ITEMS_PER_PAGE
+                              )
+                              .map((promptResult: PromptResult, idx: number) => {
+                                const absoluteIdx = idx + (pagination[result.id]?.page || 0) * ITEMS_PER_PAGE;
+                                const isExpanded = pagination[result.id]?.expanded.has(absoluteIdx);
+
+                                return (
+                                  <div key={idx} className="border rounded-lg p-3 space-y-2">
+                                    <div
+                                      className="flex items-center justify-between cursor-pointer"
+                                      onClick={() => {
+                                        setPagination(prev => {
+                                          const currentExpanded = new Set(prev[result.id]?.expanded || []);
+                                          if (isExpanded) {
+                                            currentExpanded.delete(absoluteIdx);
+                                          } else {
+                                            currentExpanded.add(absoluteIdx);
                                           }
-                                        };
-                                      });
-                                    }}
-                                  >
-                                    <p className="text-sm font-medium">{promptResult.text}</p>
-                                    {isExpanded ? (
-                                      <ChevronUp className="h-4 w-4 flex-shrink-0" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                          return {
+                                            ...prev,
+                                            [result.id]: {
+                                              page: prev[result.id]?.page || 0,
+                                              expanded: currentExpanded
+                                            }
+                                          };
+                                        });
+                                      }}
+                                    >
+                                      <p className="text-sm font-medium">{promptResult.text}</p>
+                                      {isExpanded ? (
+                                        <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                      )}
+                                    </div>
+
+                                    {isExpanded && (
+                                      <div className="space-y-1 pt-2">
+                                        {promptResult.responses.map((response: string, rIdx: number) => (
+                                          <p key={rIdx} className="text-sm text-muted-foreground">
+                                            Response {rIdx + 1}: {response}
+                                          </p>
+                                        ))}
+                                      </div>
                                     )}
                                   </div>
+                                );
+                              })}
 
-                                  {isExpanded && (
-                                    <div className="space-y-1 pt-2">
-                                      {promptResult.responses.map((response: string, rIdx: number) => (
-                                        <p key={rIdx} className="text-sm text-muted-foreground">
-                                          Response {rIdx + 1}: {response}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {/* Pagination - More compact */}
+                            {result.prompts.length > ITEMS_PER_PAGE && (
+                              <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setPagination(prev => ({
+                                      ...prev,
+                                      [result.id]: {
+                                        page: Math.max(0, (prev[result.id]?.page || 0) - 1),
+                                        expanded: prev[result.id]?.expanded || new Set()
+                                      }
+                                    }));
+                                  }}
+                                  disabled={(pagination[result.id]?.page || 0) === 0}
+                                >
+                                  Previous
+                                </Button>
 
-                          {/* Pagination - More compact */}
-                          {result.prompts.length > ITEMS_PER_PAGE && (
-                            <div className="flex justify-center gap-2 mt-3 pt-2 border-t">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setPagination(prev => ({
-                                    ...prev,
-                                    [result.id]: {
-                                      page: Math.max(0, (prev[result.id]?.page || 0) - 1),
-                                      expanded: prev[result.id]?.expanded || new Set()
-                                    }
-                                  }));
-                                }}
-                                disabled={(pagination[result.id]?.page || 0) === 0}
-                              >
-                                Previous
-                              </Button>
+                                <span className="flex items-center text-sm text-muted-foreground">
+                                  Page {(pagination[result.id]?.page || 0) + 1} of{' '}
+                                  {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
+                                </span>
 
-                              <span className="flex items-center text-sm text-muted-foreground">
-                                Page {(pagination[result.id]?.page || 0) + 1} of{' '}
-                                {Math.ceil(result.prompts.length / ITEMS_PER_PAGE)}
-                              </span>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setPagination(prev => ({
-                                    ...prev,
-                                    [result.id]: {
-                                      page: Math.min(
-                                        Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
-                                        (prev[result.id]?.page || 0) + 1
-                                      ),
-                                      expanded: prev[result.id]?.expanded || new Set()
-                                    }
-                                  }));
-                                }}
-                                disabled={
-                                  (pagination[result.id]?.page || 0) >=
-                                  Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
-                                }
-                              >
-                                Next
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="border-b pt-2 pb-1">
-                  <h2 className="text-lg font-semibold tracking-tight">Concept Distributions</h2>
-                </div>
-
-                {/* Progress Display - Extraction */}
-                {extractionProgress && (
-                  <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {extractionProgress.message || 'Extracting concepts...'}
-                        </span>
-                        <span className="font-medium">
-                          {extractionProgress.processed}/{extractionProgress.total} responses
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-secondary rounded-full h-2">
-                        <div
-                          className="bg-primary rounded-full h-2 transition-all duration-300"
-                          style={{
-                            width: `${(extractionProgress.processed / extractionProgress.total) * 100}%`
-                          }}
-                        />
-                      </div>
-                    </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setPagination(prev => ({
+                                      ...prev,
+                                      [result.id]: {
+                                        page: Math.min(
+                                          Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1,
+                                          (prev[result.id]?.page || 0) + 1
+                                        ),
+                                        expanded: prev[result.id]?.expanded || new Set()
+                                      }
+                                    }));
+                                  }}
+                                  disabled={
+                                    (pagination[result.id]?.page || 0) >=
+                                    Math.ceil(result.prompts.length / ITEMS_PER_PAGE) - 1
+                                  }
+                                >
+                                  Next
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                )}
 
-                {/* Update the ConceptVisualizations usage */}
-                {conceptDistributions.concepts.size > 0 && (
-                  <ConceptVisualizations conceptData={conceptDistributions} />
-                )}
+                  <div className="border-b pt-2 pb-1">
+                    <h2 className="text-lg font-semibold tracking-tight">Concept Distributions</h2>
+                  </div>
+
+                  {/* Progress Display - Extraction */}
+                  <ExtractionProgressDisplay />
+
+                  {/* Visualizations section - LLM concepts in two columns, LDA below */}
+                  {conceptDistributions.concepts.size > 0 && (
+                    <div className="space-y-6">
+                      {/* LLM Concept Visualizations */}
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">LLM Concept Analysis</h3>
+                        <ConceptVisualizations conceptData={conceptDistributions} />
+                      </div>
+
+                      {/* LDA Topic Analysis - Full width below */}
+                      {ldaResults && (
+                        <div className="border-none">
+                          <h3 className="text-lg font-semibold mb-4">LDA Topic Analysis</h3>
+                            <div className="space-y-6 pt-4 border-none">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {ldaResults.topics.map((topic) => (
+                                    <Card key={topic.topic_id} className="p-4">
+                                      <h4 className="font-medium mb-2">Topic {topic.topic_id + 1}</h4>
+                                      <div className="space-y-2">
+                                        {topic.words.map((word, idx) => (
+                                          <div key={word} className="flex justify-between items-center">
+                                            <span>{word}</span>
+                                            <Badge variant="secondary">
+                                              {(topic.weights[idx] * 100).toFixed(1)}%
+                                            </Badge>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </Card>
+                                  ))}
+                                </div>
+                              </div>
+                        </div>
+                      )}
+
+                      {/* Embeddings Analysis */}
+                      {embeddingsResults.length > 0 && (
+                        <EmbeddingsVisualizations results={embeddingsResults} />
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           )}

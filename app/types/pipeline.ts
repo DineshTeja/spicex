@@ -70,13 +70,53 @@ export type ProgressUpdate = {
 
 export type ProgressCallback = (update: ProgressUpdate) => void;
 
-export interface ExtractedConcepts {
+export type LDATopicResult = {
+  topic_id: number;
+  words: string[];
+  weights: number[];
+};
+
+export type LDAResult = {
+  topics: LDATopicResult[];
+  doc_topic_distributions: number[][];
+  error?: string;
+};
+
+export type ConceptExtractionType = 'llm' | 'lda';
+
+export type ExtractedConcepts = {
   concepts: string[];
   race?: string;
   response: string;
+};
+
+export type LDAExtractedConcepts = {
+  topics: LDATopicResult[];
+  distributions: number[][];
+};
+
+export interface ClusterConcept {
+  cluster_id: number;
+  size: number;
+  representative_responses: string[];
+  distribution: { [race: string]: number };
 }
 
-export interface ConceptAnalysis {
-  concepts: Map<string, number>;
-  raceDistributions: Map<string, Map<string, number>>;
-} 
+export interface EmbeddingsResults {
+  clusters: ClusterConcept[];
+  distributions: number[][];
+}
+
+export interface ExtractionProgress {
+  processed: number;
+  total: number;
+  message: string;
+  type: 'llm' | 'lda' | 'embeddings';
+}
+
+export type EmbeddingsResult = {
+  cluster_id: number;
+  size: number;
+  representative_responses: string[];
+  distribution: { [key: string]: number };
+}; 

@@ -86,7 +86,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
     // Create heatmap data
     const races = Array.from(conceptData.raceDistributions.keys());
     const concepts = Array.from(conceptData.concepts.keys());
-    
+
     // Create raw heatmap
     const heatmapData = races.map(race => {
       const raceMap = conceptData.raceDistributions.get(race) || new Map();
@@ -107,7 +107,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
         data: {
           datasets: [{
             label: 'Concept Distribution Heatmap',
-            data: heatmapData.flatMap((row, i) => 
+            data: heatmapData.flatMap((row, i) =>
               row.map((value, j) => ({
                 x: j,
                 y: i,
@@ -168,7 +168,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
         data: {
           datasets: [{
             label: 'Normalized Concept Distribution Heatmap',
-            data: normalizedData.flatMap((row, i) => 
+            data: normalizedData.flatMap((row, i) =>
               row.map((value, j) => ({
                 x: j,
                 y: i,
@@ -222,25 +222,34 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
   }, [conceptData]);
 
   return (
-    <Card className="mt-6">
-      <CardContent className="space-y-6 pt-4">
-        <div>
+    <div className="grid grid-cols-2 gap-6">
+      <Card>
+        <CardContent className="pt-4">
           <h3 className="text-lg font-semibold mb-4">Overall Concept Distribution</h3>
           <canvas ref={overallChartRef} />
-        </div>
-        <div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4">
           <h3 className="text-lg font-semibold mb-4">Concept Distribution by Demographics</h3>
           <canvas ref={distributionChartRef} />
-        </div>
-        <div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4">
           <h3 className="text-lg font-semibold mb-4">Raw Distribution Heatmap</h3>
           <canvas ref={heatmapRef} />
-        </div>
-        <div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4">
           <h3 className="text-lg font-semibold mb-4">Normalized Distribution Heatmap</h3>
           <canvas ref={normalizedHeatmapRef} />
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 } 
