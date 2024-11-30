@@ -855,7 +855,7 @@ export default function Home() {
       <div className="flex-1 overflow-hidden">
         <div className={`
           ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) 
-            ? 'flex gap-6 h-[100dvh] overflow-hidden'
+            ? 'flex flex-col sm:flex-row gap-6 h-[100dvh] overflow-hidden'
             : 'flex justify-center p-6'
           }
         `}>
@@ -863,7 +863,7 @@ export default function Home() {
           <div className={`
             space-y-4 overflow-y-auto
             ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0)
-              ? 'flex-[0.8] min-w-[500px] max-w-[600px] p-6'
+              ? 'w-full sm:flex-[0.8] p-4 sm:p-6'
               : 'w-full max-w-4xl'
             }
           `}>
@@ -1293,9 +1293,16 @@ export default function Home() {
 
           {/* Right Column - Concept Extraction Results */}
           {(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) && (
-            <div className="flex-1 border-l pl-6 flex flex-col h-[100dvh] overflow-hidden">
+            <div className="
+              flex-1 
+              border-t sm:border-t-0 sm:border-l 
+              pt-4 sm:pt-0 sm:pl-6 
+              flex flex-col 
+              h-[auto] sm:h-[100dvh] 
+              overflow-hidden
+            ">
               <div className="flex flex-col h-full">
-                <div className="p-6 pb-4">
+                <div className="p-4 sm:p-6 pb-4">
                   <div className="border-b pb-1 mb-4">
                     <h2 className="text-lg font-semibold tracking-tight">Concept Analysis</h2>
                   </div>
@@ -1305,38 +1312,61 @@ export default function Home() {
 
                 <div className="flex-1 min-h-0">
                   <Tabs defaultValue="llm" className="w-full h-full flex flex-col">
-                    <div className="px-6">
+                    <div className="px-4 sm:px-6">
                       <TabsList className="grid w-full grid-cols-3 mb-4">
                         <TabsTrigger value="llm">LLM Concepts</TabsTrigger>
                         <TabsTrigger value="lda">LDA Concepts</TabsTrigger>
-                        <TabsTrigger value="embeddings">Embeddings Concepts</TabsTrigger>
+                        <TabsTrigger value="embeddings">BERT Embeddings Concepts</TabsTrigger>
                       </TabsList>
                     </div>
 
-                    <TabsContent value="llm" className="flex-1 overflow-y-auto px-6 min-h-0">
+                    {/* LLM Concepts Tab - Mobile optimized */}
+                    <TabsContent value="llm" className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
                       {conceptDistributions.concepts.size > 0 && (
                         <div className="space-y-6 pb-6">
-                          <ConceptVisualizations conceptData={conceptDistributions} />
+                          <div className="sm:hidden"> {/* Mobile-only view */}
+                            <div className="space-y-4">
+                              {Array.from(conceptDistributions.concepts.entries()).map(([concept, count]) => (
+                                <Card key={concept} className="p-4">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium">{concept}</span>
+                                    <Badge>{count}</Badge>
+                                  </div>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="hidden sm:block"> {/* Desktop-only view */}
+                            <ConceptVisualizations conceptData={conceptDistributions} />
+                          </div>
                         </div>
                       )}
                     </TabsContent>
 
-                    <TabsContent value="lda" className="flex-1 overflow-y-auto px-6 min-h-0">
+                    {/* LDA Topics Tab - Mobile optimized */}
+                    <TabsContent value="lda" className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
                       {ldaResults && (
                         <div className="space-y-6 pb-6">
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {ldaResults.topics.map((topic) => (
                               <Card key={topic.topic_id} className="p-4">
                                 <h4 className="font-medium mb-2">Topic {topic.topic_id + 1}</h4>
                                 <div className="space-y-2">
-                                  {topic.words.map((word, idx) => (
-                                    <div key={word} className="flex justify-between items-center">
-                                      <span>{word}</span>
-                                      <Badge variant="secondary">
-                                        {(topic.weights[idx] * 100).toFixed(1)}%
+                                  {/* Mobile-optimized layout for topic words */}
+                                  <div className="flex flex-wrap gap-2">
+                                    {topic.words.map((word, idx) => (
+                                      <Badge 
+                                        key={word} 
+                                        variant="secondary"
+                                        className="flex items-center gap-1"
+                                      >
+                                        <span>{word}</span>
+                                        <span className="text-xs opacity-70">
+                                          {(topic.weights[idx] * 100).toFixed(1)}%
+                                        </span>
                                       </Badge>
-                                    </div>
-                                  ))}
+                                    ))}
+                                  </div>
                                 </div>
                               </Card>
                             ))}
@@ -1345,10 +1375,13 @@ export default function Home() {
                       )}
                     </TabsContent>
 
-                    <TabsContent value="embeddings" className="flex-1 overflow-y-auto px-6 min-h-0">
+                    {/* Embeddings Tab - Mobile optimized */}
+                    <TabsContent value="embeddings" className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
                       {embeddingsResults.length > 0 && (
                         <div className="w-full pb-6">
-                          <EmbeddingsVisualizations results={embeddingsResults} />
+                          <div className="hidden sm:block"> {/* Desktop-only view */}
+                            <EmbeddingsVisualizations results={embeddingsResults} />
+                          </div>
                         </div>
                       )}
                     </TabsContent>
