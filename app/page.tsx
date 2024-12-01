@@ -417,39 +417,71 @@ export default function Home() {
 
       const decoder = new TextDecoder();
       let results: AnalysisResult[] = [];
+      let buffer = ''; // Add buffer for incomplete chunks
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        try {
+          buffer += decoder.decode(value, { stream: true }); // Use streaming mode
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.slice(5));
-
-            if (data.type === 'complete') {
-              results = [...results, data.result];
-              setAnalysisResults(prev => [...prev, data.result]);
-              toast.success('Analysis completed successfully');
-            } else if (data.type === 'error') {
-              throw new Error(data.error);
-            } else {
-              setProgress({
-                currentPrompt: data.prompt,
-                iteration: data.iteration,
-                totalPrompts: data.totalPrompts,
-                completedPrompts: data.completedPrompts,
-                message: data.message
-              });
+          for (const line of lines) {
+            if (line.trim().startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+                
+                if (data.type === 'complete') {
+                  results = [...results, data.result];
+                  setAnalysisResults(prev => [...prev, data.result]);
+                  toast.success('Analysis completed successfully');
+                } else if (data.type === 'error') {
+                  throw new Error(data.error);
+                } else {
+                  setProgress({
+                    currentPrompt: data.prompt,
+                    iteration: data.iteration,
+                    totalPrompts: data.totalPrompts,
+                    completedPrompts: data.completedPrompts,
+                    message: data.message
+                  });
+                }
+              } catch (parseError) {
+                console.error('Failed to parse SSE data:', parseError);
+                console.log('Problematic line:', line);
+                // Continue processing other lines instead of breaking
+                continue;
+              }
             }
           }
+        } catch (decodeError) {
+          console.error('Failed to decode chunk:', decodeError);
+          // Continue reading the stream instead of breaking
+          continue;
         }
       }
 
-      // After analysis is complete, extract concepts
-      await extractConcepts(results);
+      // Process any remaining data in buffer
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer.slice(5));
+          if (data.type === 'complete') {
+            results = [...results, data.result];
+            setAnalysisResults(prev => [...prev, data.result]);
+          }
+        } catch (parseError) {
+          console.error('Failed to parse final buffer:', parseError);
+        }
+      }
+
+      // Only proceed with concept extraction if we have results
+      if (results.length > 0) {
+        await extractConcepts(results);
+      } else {
+        throw new Error('No valid results received from analysis');
+      }
 
     } catch (error) {
       console.error('Pipeline failed:', error);
@@ -953,21 +985,18 @@ export default function Home() {
         />
       )}
 
-      {/* Main Content - Dynamic Layout */}
-      <div className="flex-1 overflow-hidden">
+      {/* Main Content - Update the classes */}
+      <div className="flex-1 overflow-auto">
         <div className={`
           ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) 
             ? 'flex flex-col sm:flex-row gap-6 h-[100dvh] overflow-hidden'
-            : 'flex justify-center p-6'
-          }
+            : 'flex justify-center p-6 min-h-[100dvh]'}
         `}>
-          {/* Configuration and Analysis Results - Dynamic width and position */}
+          {/* Configuration and Analysis Results - Update the classes */}
           <div className={`
-            space-y-4 overflow-y-auto
             ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0)
-              ? 'w-full sm:flex-[0.8] p-4 sm:p-6'
-              : 'w-full max-w-4xl'
-            }
+              ? 'w-full sm:flex-[0.8] p-4 sm:p-6 overflow-auto'
+              : 'w-full max-w-4xl'}
           `}>
             {/* Configuration section */}
             <div className="space-y-4">

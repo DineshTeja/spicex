@@ -21,6 +21,7 @@ export async function processBatch(
 ): Promise<BatchResults[]> {
   const results: BatchResults[] = [];
   let completedPrompts = 0;
+  const MAX_RESPONSE_SIZE = 1024 * 1024; // 1MB limit per response
 
   for (const prompt of prompts) {
     const responses: string[] = [];
@@ -28,53 +29,50 @@ export async function processBatch(
     onProgress?.({
       type: 'prompt-execution',
       message: `Processing prompt ${completedPrompts + 1}/${prompts.length}`,
-      prompt,
+      prompt: prompt.slice(0, 100) + (prompt.length > 100 ? '...' : ''), // Truncate long prompts in progress updates
       completedPrompts,
       totalPrompts: prompts.length
     });
     
-    // Run multiple iterations for each prompt
     for (let i = 0; i < batchSize; i++) {
       try {
-        onProgress?.({
-          type: 'iteration-complete',
-          message: `Running iteration ${i + 1}/${batchSize}`,
-          prompt,
-          iteration: i + 1,
-          completedPrompts,
-          totalPrompts: prompts.length
-        });
-
         const response = await retrieveSingleCall(prompt, params.model);
-        if (response) {
-          responses.push(response);
+        if (response && response.length < MAX_RESPONSE_SIZE) {
+          // Sanitize response to ensure it's valid JSON when stringified
+          const sanitizedResponse = response
+            .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Remove control characters
+            .trim();
+          responses.push(sanitizedResponse);
+        } else {
+          console.warn('Response exceeded size limit or was empty');
+          responses.push('Response too large or empty');
         }
       } catch (error) {
-        console.log(`Batch ${i} failed for prompt:`, prompt, error);
+        console.error(`Batch ${i} failed for prompt:`, prompt, error);
+        responses.push('Failed to get response');
       }
     }
 
     completedPrompts++;
-    console.log("RESPONSES_FOR_PROMPT", prompt, responses);
 
-    // Extract metadata from the prompt
-    const perspective = prompt.includes("I am") ? "First" : 
-                       prompt.includes("My friend") ? "Third" : "Hypothetical";
+    // Create a safe version of the metadata
+    const safeMetadata = {
+      perspective: prompt.includes("I am") ? "First" : 
+                  prompt.includes("My friend") ? "Third" : "Hypothetical",
+      demographics: [
+        ...params.demographics.genders,
+        ...params.demographics.ages,
+        ...params.demographics.ethnicities,
+        ...params.demographics.socioeconomic
+      ].map(d => d.slice(0, 100)), // Limit length of demographic strings
+      context: params.context.slice(0, 1000), // Limit context length
+      questionType: params.questionTypes.find(qt => prompt.includes(qt)) || "Unknown"
+    };
 
     results.push({
-      prompt,
+      prompt: prompt.slice(0, 1000), // Limit prompt length
       responses,
-      metadata: {
-        perspective,
-        demographics: [
-          ...params.demographics.genders,
-          ...params.demographics.ages,
-          ...params.demographics.ethnicities,
-          ...params.demographics.socioeconomic
-        ],
-        context: params.context,
-        questionType: params.questionTypes.find(qt => prompt.includes(qt)) || "Unknown"
-      }
+      metadata: safeMetadata
     });
   }
 
