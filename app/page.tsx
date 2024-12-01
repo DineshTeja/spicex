@@ -743,60 +743,95 @@ export default function Home() {
         body: JSON.stringify(results)
       });
 
+      console.log("RESPONSE",response)
+
       if (!response.ok) throw new Error('Embeddings extraction failed');
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('Failed to get response reader');
 
       const decoder = new TextDecoder();
+      let buffer = ''; // Add buffer for incomplete chunks
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        try {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(5));
+          for (const line of lines) {
+            if (line.trim().startsWith('data: ')) {
+              try {
+                const jsonStr = line.slice(5).trim();
+                // Additional validation to ensure we have valid JSON
+                if (jsonStr.startsWith('{') && jsonStr.endsWith('}')) {
+                  const data = JSON.parse(jsonStr);
 
-              switch (data.type) {
-                case 'extraction_progress':
-                  setExtractionProgress(prev => ({
-                    ...prev,
-                    embeddings: {
-                      processed: data.progress.processed,
-                      total: data.progress.total,
-                      message: data.message,
-                      type: 'embeddings'
-                    }
-                  }));
-                  break;
+                  switch (data.type) {
+                    case 'extraction_progress':
+                      setExtractionProgress(prev => ({
+                        ...prev,
+                        embeddings: {
+                          processed: data.progress.processed,
+                          total: data.progress.total,
+                          message: data.message,
+                          type: 'embeddings'
+                        }
+                      }));
+                      break;
 
-                case 'embeddings_concepts':
-                  if (Array.isArray(data.cluster_concepts)) {
-                    setEmbeddingsResults(data.cluster_concepts);
+                    case 'embeddings_concepts':
+                      if (Array.isArray(data.cluster_concepts)) {
+                        setEmbeddingsResults(data.cluster_concepts);
+                      }
+                      break;
+
+                    case 'complete':
+                      setIsExtracting(prev => ({ ...prev, embeddings: false }));
+                      setExtractionProgress(prev => ({ ...prev, embeddings: undefined }));
+                      break;
+
+                    case 'error':
+                      toast.error(`Embeddings Error: ${data.error}`);
+                      setIsExtracting(prev => ({ ...prev, embeddings: false }));
+                      break;
                   }
-                  break;
-
-                case 'complete':
-                  setIsExtracting(prev => ({ ...prev, embeddings: false }));
-                  setExtractionProgress(prev => ({ ...prev, embeddings: undefined }));
-                  break;
-
-                case 'error':
-                  toast.error(`Embeddings Error: ${data.error}`);
-                  setIsExtracting(prev => ({ ...prev, embeddings: false }));
-                  break;
+                } else {
+                  console.warn('Invalid JSON data received:', jsonStr);
+                }
+              } catch (parseError) {
+                console.error('Error parsing embeddings data:', parseError);
+                console.log('Problematic line:', line);
+                // Continue processing other lines
+                continue;
               }
-            } catch (error) {
-              console.error('Error parsing embeddings data:', error);
             }
           }
+        } catch (decodeError) {
+          console.error('Error decoding chunk:', decodeError);
+          // Continue reading the stream
+          continue;
         }
       }
+
+      // Process any remaining data in buffer
+      if (buffer.trim().startsWith('data: ')) {
+        try {
+          const jsonStr = buffer.slice(5).trim();
+          if (jsonStr.startsWith('{') && jsonStr.endsWith('}')) {
+            const data = JSON.parse(jsonStr);
+            if (data.type === 'embeddings_concepts' && Array.isArray(data.cluster_concepts)) {
+              setEmbeddingsResults(data.cluster_concepts);
+            }
+          }
+        } catch (error) {
+          console.error('Error processing final buffer:', error);
+        }
+      }
+
     } catch (error) {
       console.error('Embeddings extraction failed:', error);
       toast.error('Failed to extract embeddings');

@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         pythonProcess.stdout.on('data', (data) => {
           stdoutData += data.toString();
           const lines = stdoutData.split('\n');
-
+          
           // Keep the last partial line in stdoutData
           stdoutData = lines.pop() || '';
 
@@ -59,38 +59,47 @@ export async function POST(req: Request) {
             
             try {
               const parsedData = JSON.parse(line);
+              let safeData: string;
               
               if (parsedData.type === 'progress') {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: 'extraction_progress',
-                      message: parsedData.message,
-                      progress: parsedData.progress
-                    })}\n\n`
-                  )
-                );
+                safeData = JSON.stringify({
+                  type: 'extraction_progress',
+                  message: String(parsedData.message).slice(0, 1000), // Limit message length
+                  progress: {
+                    processed: Number(parsedData.progress.processed) || 0,
+                    total: Number(parsedData.progress.total) || 0
+                  }
+                });
               } else if (parsedData.type === 'error') {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: 'error',
-                      error: parsedData.error
-                    })}\n\n`
-                  )
-                );
+                safeData = JSON.stringify({
+                  type: 'error',
+                  error: String(parsedData.error).slice(0, 1000) // Limit error message length
+                });
               } else {
-                // This is the final cluster concepts data
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: 'embeddings_concepts',
-                      cluster_concepts: parsedData,
-                      progress: { processed: responses.length, total: responses.length }
-                    })}\n\n`
-                  )
-                );
+                // Sanitize cluster concepts data
+                const sanitizedConcepts = Array.isArray(parsedData) ? parsedData.map(cluster => ({
+                  cluster_id: Number(cluster.cluster_id) || 0,
+                  size: Number(cluster.size) || 0,
+                  representative_responses: Array.isArray(cluster.representative_responses) 
+                    ? cluster.representative_responses
+                        .slice(0, 10) // Limit number of responses
+                        .map((r: string) => String(r).slice(0, 1000)) // Limit response length
+                    : [],
+                  distribution: typeof cluster.distribution === 'object' 
+                    ? Object.fromEntries(
+                        Object.entries(cluster.distribution)
+                          .map(([k, v]) => [String(k).slice(0, 100), Number(v) || 0])
+                      )
+                    : {}
+                })) : [];
+
+                safeData = JSON.stringify({
+                  type: 'embeddings_concepts',
+                  cluster_concepts: sanitizedConcepts
+                });
               }
+
+              controller.enqueue(encoder.encode(`data: ${safeData}\n\n`));
             } catch (error) {
               console.error('Error parsing Python output:', error, 'Line:', line);
               controller.enqueue(
