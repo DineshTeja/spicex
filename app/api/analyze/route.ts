@@ -11,6 +11,10 @@ export async function POST(request: NextRequest) {
       throw new Error('Missing required parameters: model and primaryIssues');
     }
 
+    if (!params.iterations || params.iterations < 1) {
+      throw new Error('Invalid iterations value: must be at least 1');
+    }
+
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
@@ -24,8 +28,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Run analysis pipeline with progress updates
-    runAnalysisPipeline(params, 1, async (update) => {
+    // Run analysis pipeline with progress updates - use params.iterations
+    runAnalysisPipeline(params, async (update) => {
       await writer.write(
         encoder.encode(`data: ${JSON.stringify(update)}\n\n`)
       );

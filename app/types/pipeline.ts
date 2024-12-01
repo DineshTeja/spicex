@@ -41,6 +41,7 @@ export type SelectedParams = {
   context: string;
   relevanceOptions: string[];
   questionTypes: string[];
+  iterations: number;
 };
 
 export type PromptResult = {

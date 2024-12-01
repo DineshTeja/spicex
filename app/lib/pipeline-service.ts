@@ -83,7 +83,7 @@ export async function processBatch(
 
 export async function runAnalysisPipeline(
   params: SelectedParams, 
-  batchSize: number = 3,
+  // batchSize: number = params.iterations,
   onProgress?: ProgressCallback
 ): Promise<AnalysisResult> {
   // Generate prompts
@@ -96,12 +96,12 @@ export async function runAnalysisPipeline(
 
   onProgress?.({
     type: 'prompt-generation',
-    message: `Generated ${prompts.length} prompts`,
+    message: `Generated ${prompts.length} prompts, running ${params.iterations} iterations each`,
     totalPrompts: prompts.length
   });
   
   // Process prompts in batches
-  const batchResults = await processBatch(prompts, params, batchSize, onProgress);
+  const batchResults = await processBatch(prompts, params, params.iterations, onProgress);
   
   // Create analysis result
   const result: AnalysisResult = {
@@ -115,7 +115,7 @@ export async function runAnalysisPipeline(
       ...params.demographics.socioeconomic
     ],
     context: params.context,
-    details: `Analyzed ${prompts.length} prompts with ${batchSize} iterations each.`,
+    details: `Analyzed ${prompts.length} prompts with ${params.iterations} iterations each.`,
     timestamp: new Date().toISOString(),
     prompts: batchResults.map(r => ({
       text: r.prompt,

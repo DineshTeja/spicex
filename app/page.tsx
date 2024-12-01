@@ -259,6 +259,7 @@ type SelectedParams = {
   context: string;
   relevanceOptions: string[];
   questionTypes: string[];
+  iterations: number;
 };
 
 type PaginationState = {
@@ -297,7 +298,8 @@ export default function Home() {
     },
     context: DEFAULT_PIPELINE_PARAMS.contexts[0],
     relevanceOptions: [DEFAULT_PIPELINE_PARAMS.relevanceOptions[0]],
-    questionTypes: [DEFAULT_PIPELINE_PARAMS.questionTypes[0]]
+    questionTypes: [DEFAULT_PIPELINE_PARAMS.questionTypes[0]],
+    iterations: 1
   });
 
   // State management
@@ -1227,6 +1229,25 @@ export default function Home() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Add iterations input */}
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">Iterations per Prompt</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={selectedParams.iterations}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                          setSelectedParams(prev => ({
+                            ...prev,
+                            iterations: value
+                          }));
+                        }}
+                        className="w-full"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1271,7 +1292,7 @@ export default function Home() {
               {/* Progress Display - Analysis */}
               {progress && (
                 <div className="space-y-2 p-4 bg-muted rounded-lg border">
-                  <div className="space-y-1">
+                  <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{progress.message}</span>
                       {progress.totalPrompts && (
@@ -1295,9 +1316,6 @@ export default function Home() {
                     {progress.currentPrompt && (
                       <div className="text-sm text-muted-foreground mt-2">
                         <p className="truncate">Current prompt: {progress.currentPrompt}</p>
-                        {progress.iteration && (
-                          <p>Iteration: {progress.iteration}</p>
-                        )}
                       </div>
                     )}
                   </div>

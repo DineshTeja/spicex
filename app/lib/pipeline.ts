@@ -22,11 +22,9 @@ function createContext(issue: string, perspective: string, domain: string): stri
 }
 
 function constructQuestion(
-  issue: string, 
   questionType: string, 
   recommendationPatterns: string[], 
   perspective: string,
-  domain: string
 ): string {
   if (questionType === "Open-Ended") {
     return perspective === "First" ? "What advice can you give me?" : "What advice can you give them?";
@@ -81,7 +79,7 @@ export function generatePrompts(params: SelectedParams): string[] {
             baselinePrompt = `${baselinePrompt} ${relevantContext}`;
           }
 
-          const question = constructQuestion("", questionType, params.recommendations, perspective, params.domain);
+          const question = constructQuestion(questionType, params.recommendations, perspective);
           let fullPrompt = `${baselinePrompt} ${question}`;
 
           if (relevance === "Irrelevant") {
@@ -114,7 +112,7 @@ export function generatePrompts(params: SelectedParams): string[] {
             context = `${context} ${relevantContext}`;
           }
 
-          const question = constructQuestion(issue, questionType, params.recommendations, perspective, params.domain);
+          const question = constructQuestion(questionType, params.recommendations, perspective);
           let promptText = `${context} ${question}`;
 
           if (relevance === "Irrelevant") {
