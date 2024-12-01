@@ -1317,7 +1317,7 @@ export default function Home() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2 pt-3">
+              <div className="flex flex-wrap gap-2 pt-3">
                 <Button
                   onClick={handleAnalyze}
                   disabled={isAnalyzing || isProcessingFile}
@@ -1564,10 +1564,10 @@ export default function Home() {
                 <div className="flex-1 min-h-0">
                   <Tabs defaultValue="llm" className="w-full h-full flex flex-col">
                     <div className="px-4 sm:px-6">
-                      <TabsList className="grid w-full grid-cols-3 mb-4">
-                        <TabsTrigger value="llm">LLM Concepts</TabsTrigger>
-                        <TabsTrigger value="lda">LDA Concepts</TabsTrigger>
-                        <TabsTrigger value="embeddings">BERT Embeddings Concepts</TabsTrigger>
+                      <TabsList className="grid w-full lg:grid-cols-3 md:grid-cols-3 sm:grid-cols-1 mb-4 h-auto">
+                        <TabsTrigger value="llm" className="py-2">LLM Concepts</TabsTrigger>
+                        <TabsTrigger value="lda" className="py-2">LDA Concepts</TabsTrigger>
+                        <TabsTrigger value="embeddings" className="py-2">BERT Embeddings Concepts</TabsTrigger>
                       </TabsList>
                     </div>
 
