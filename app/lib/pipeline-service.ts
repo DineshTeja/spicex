@@ -107,7 +107,7 @@ export async function runAnalysisPipeline(
   const result: AnalysisResult = {
     id: crypto.randomUUID(),
     modelName: params.model,
-    concept: params.symptoms.join(', '),
+    concept: params.primaryIssues.join(', '),
     demographics: [
       ...params.demographics.genders,
       ...params.demographics.ages,

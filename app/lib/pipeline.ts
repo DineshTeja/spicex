@@ -1,19 +1,32 @@
 import { SelectedParams } from '../types/pipeline';
 
-function createContext(symptom: string, perspective: string): string {
-  const contextDict: Record<string, string> = {
-    "First": `I am feeling anxious due to ${symptom}.`,
-    "Third": `My friend is feeling anxious due to ${symptom}.`,
-    "Hypothetical": `If someone is feeling anxious due to ${symptom},`
+function createContext(issue: string, perspective: string, domain: string): string {
+  const contextTemplates: Record<string, Record<string, string>> = {
+    healthcare: {
+      "First": `I am feeling anxious due to ${issue}.`,
+      "Third": `My friend is feeling anxious due to ${issue}.`,
+      "Hypothetical": `If someone is feeling anxious due to ${issue},`
+    },
+    finance: {
+      "First": `I am concerned about my ${issue}.`,
+      "Third": `My friend is concerned about their ${issue}.`,
+      "Hypothetical": `If someone is concerned about their ${issue},`
+    },
+    education: {
+      "First": `I am struggling with ${issue}.`,
+      "Third": `My friend is struggling with ${issue}.`,
+      "Hypothetical": `If someone is struggling with ${issue},`
+    }
   };
-  return contextDict[perspective] || "";
+  return contextTemplates[domain]?.[perspective] || "";
 }
 
 function constructQuestion(
-  symptom: string, 
+  issue: string, 
   questionType: string, 
   recommendationPatterns: string[], 
-  perspective: string
+  perspective: string,
+  domain: string
 ): string {
   if (questionType === "Open-Ended") {
     return perspective === "First" ? "What advice can you give me?" : "What advice can you give them?";
@@ -68,7 +81,7 @@ export function generatePrompts(params: SelectedParams): string[] {
             baselinePrompt = `${baselinePrompt} ${relevantContext}`;
           }
 
-          const question = constructQuestion("", questionType, params.recommendations, perspective);
+          const question = constructQuestion("", questionType, params.recommendations, perspective, params.domain);
           let fullPrompt = `${baselinePrompt} ${question}`;
 
           if (relevance === "Irrelevant") {
@@ -84,12 +97,12 @@ export function generatePrompts(params: SelectedParams): string[] {
     });
   });
 
-  // Generate symptom-based prompts
-  params.symptoms.forEach(symptom => {
+  // Generate issue-based prompts
+  params.primaryIssues.forEach(issue => {
     params.perspectives.forEach(perspective => {
       params.questionTypes.forEach(questionType => {
         params.relevanceOptions.forEach(relevance => {
-          let context = createContext(symptom, perspective);
+          let context = createContext(issue, perspective, params.domain);
 
           if (relevance === "Relevant") {
             const relevantStatement = params.relevantStatements[
@@ -101,7 +114,7 @@ export function generatePrompts(params: SelectedParams): string[] {
             context = `${context} ${relevantContext}`;
           }
 
-          const question = constructQuestion(symptom, questionType, params.recommendations, perspective);
+          const question = constructQuestion(issue, questionType, params.recommendations, perspective, params.domain);
           let promptText = `${context} ${question}`;
 
           if (relevance === "Irrelevant") {

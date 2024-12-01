@@ -6,6 +6,11 @@ export async function POST(request: NextRequest) {
   try {
     const params = await request.json() as SelectedParams;
     
+    // Validate required fields
+    if (!params.model || !params.primaryIssues || params.primaryIssues.length === 0) {
+      throw new Error('Missing required parameters: model and primaryIssues');
+    }
+
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();

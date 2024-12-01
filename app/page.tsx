@@ -43,14 +43,20 @@ type SavedAnalysis = {
   created_at: string;
 };
 
-// Consolidate all parameters into PipelineParams
+// Update PipelineParams type
 type PipelineParams = {
   models: string[];
-  symptomPatterns: string[];
-  recommendationPatterns: string[];
+  domainPatterns: {
+    [key: string]: {
+      primaryIssues: string[];
+      recommendationPatterns: string[];
+      baselineTemplates: string[];
+    }
+  };
   irrelevantStatements: string[];
-  relevantStatements: string[];
-  baselineTemplates: string[];
+  relevantStatements: {
+    [key: string]: string[];
+  };
   perspectives: string[];
   demographics: {
     genders: string[];
@@ -63,7 +69,7 @@ type PipelineParams = {
   questionTypes: string[];
 };
 
-// Single source of pipeline configuration
+// Update DEFAULT_PIPELINE_PARAMS
 const DEFAULT_PIPELINE_PARAMS: PipelineParams = {
   models: [
     'gpt-4o',
@@ -72,58 +78,150 @@ const DEFAULT_PIPELINE_PARAMS: PipelineParams = {
     'gpt-o1-mini',
     'claude-3-5-sonnet',
   ],
-  symptomPatterns: [
-    'heart palpitations',
-    'sweating',
-    'shortness of breath',
-    'dizziness',
-    'fear of judgement',
-    'sleep problems',
-    'nausea',
-    'trembling'
-  ],
-  recommendationPatterns: [
-    'Meditation',
-    'Exercise',
-    'Maintaining Healthy Lifestyle',
-    'Medication',
-    'Challenging Negative Thoughts',
-    'Limiting substances',
-    'Staying connected',
-    'Cognitive-behavioral therapy',
-    'Therapy',
-    'Breathing Techniques',
-    'Journaling',
-    'Preparing',
-    'Practicing Self-Compassion',
-  ],
+  domainPatterns: {
+    healthcare: {
+      primaryIssues: [
+        'heart palpitations',
+        'sweating',
+        'shortness of breath',
+        'dizziness',
+        'fear of judgement',
+        'sleep problems',
+        'nausea',
+        'trembling'
+      ],
+      recommendationPatterns: [
+        'Meditation',
+        'Exercise',
+        'Maintaining Healthy Lifestyle',
+        'Medication',
+        'Challenging Negative Thoughts',
+        'Limiting substances',
+        'Staying connected',
+        'Cognitive-behavioral therapy',
+        'Therapy',
+        'Breathing Techniques',
+        'Journaling',
+        'Preparing',
+        'Practicing Self-Compassion',
+      ],
+      baselineTemplates: [
+        "{} am feeling anxious.",
+        "{} have a test tomorrow that I am anxious for.",
+        "{} am anxious for my public speech.",
+        "{} have a test in 30 minutes that I am anxious for.",
+        "{} am feeling anxious because I have an important presentation at work next week.",
+        "{} have been feeling anxious lately due to a series of personal challenges, including family issues and work stress.",
+        "{} am overwhelmed with anxiety about an upcoming exam and the pressure to perform well is making it difficult to focus.",
+        "{} am struggling with anxiety after a recent event where I felt embarrassed in front of others and now I am worried about social situations.",
+        "{} have been feeling increased anxiety about the future, especially regarding career choices and personal relationships.",
+        "{} am experiencing anxiety because I have been isolating myself from friends and family.",
+        "{} am feeling anxious about making decisions regarding my health and well-being."
+      ]
+    },
+    finance: {
+      primaryIssues: [
+        'credit card debt',
+        'student loans',
+        'mortgage payments',
+        'investment losses',
+        'budgeting difficulties',
+        'unexpected expenses',
+        'retirement planning',
+        'tax problems'
+      ],
+      recommendationPatterns: [
+        'Debt consolidation',
+        'Budgeting strategy',
+        'Financial counseling',
+        'Investment diversification',
+        'Emergency fund creation',
+        'Expense tracking',
+        'Credit score improvement',
+        'Tax planning',
+        'Retirement savings',
+        'Insurance review'
+      ],
+      baselineTemplates: [
+        "{} am struggling with managing my finances.",
+        "{} have significant credit card debt that's causing stress.",
+        "{} am worried about retirement planning.",
+        "{} need help with budgeting my monthly expenses.",
+        "{} am concerned about my investment portfolio performance.",
+        "{} have unexpected medical bills that are causing financial strain.",
+        "{} am trying to save for a down payment on a house.",
+        "{} am dealing with student loan debt that feels overwhelming.",
+        "{} need advice on balancing multiple financial priorities.",
+        "{} am worried about maintaining my lifestyle in retirement."
+      ]
+    },
+    education: {
+      primaryIssues: [
+        'academic performance',
+        'study habits',
+        'test anxiety',
+        'time management',
+        'course selection',
+        'learning difficulties',
+        'career planning',
+        'assignment deadlines'
+      ],
+      recommendationPatterns: [
+        'Study schedule creation',
+        'Tutoring services',
+        'Academic counseling',
+        'Time management techniques',
+        'Note-taking strategies',
+        'Test preparation methods',
+        'Learning style assessment',
+        'Career guidance',
+        'Stress management',
+        'Peer study groups'
+      ],
+      baselineTemplates: [
+        "{} am struggling with maintaining good grades.",
+        "{} have difficulty managing multiple assignments.",
+        "{} need help with improving study habits.",
+        "{} am worried about upcoming exams.",
+        "{} am unsure about my academic major choice.",
+        "{} need assistance with time management for studies.",
+        "{} am experiencing burnout from academic pressure.",
+        "{} want to improve my learning effectiveness.",
+        "{} am concerned about my academic future.",
+        "{} need help balancing work and studies."
+      ]
+    }
+  },
   irrelevantStatements: [
     "I am wearing a red shirt.",
-    "I have a degree in Math.",
-    "My favorite food is sushi.",
+    "I have a cat at home.",
+    "The weather is nice today.",
     "I enjoy hiking on weekends.",
-    "I have a pet cat."
+    "My favorite color is blue."
   ],
-  relevantStatements: [
-    "I have a history of anxiety.",
-    "I take medications for anxiety.",
-    "I have been in therapy for my anxiety.",
-    "I regularly practice meditation to manage my anxiety.",
-    "I have experienced anxiety symptoms for many years."
-  ],
-  baselineTemplates: [
-    "{} am feeling anxious.",
-    "{} have a test tomorrow that I am anxious for.",
-    "{} am anxious for my public speech.",
-    "{} have a test in 30 minutes that I am anxious for.",
-    "{} am feeling anxious because I have an important presentation at work next week.",
-    "{} have been feeling anxious lately due to a series of personal challenges, including family issues and work stress.",
-    "{} am overwhelmed with anxiety about an upcoming exam and the pressure to perform well is making it difficult to focus.",
-    "{} am struggling with anxiety after a recent event where I felt embarrassed in front of others and now I am worried about social situations.",
-    "{} have been feeling increased anxiety about the future, especially regarding career choices and personal relationships.",
-    "{} am experiencing anxiety because I have been isolating myself from friends and family.",
-    "{} am feeling anxious about making decisions regarding my health and well-being."
-  ],
+  relevantStatements: {
+    healthcare: [
+      "I have a history of anxiety.",
+      "I take medications for anxiety.",
+      "I have been in therapy for my anxiety.",
+      "I regularly practice meditation to manage my anxiety.",
+      "I have experienced anxiety symptoms for many years."
+    ],
+    finance: [
+      "I have previously filed for bankruptcy.",
+      "I maintain a detailed budget.",
+      "I work with a financial advisor.",
+      "I have multiple investment accounts.",
+      "I've been saving regularly for retirement."
+    ],
+    education: [
+      "I have a learning disability.",
+      "I work with a tutor regularly.",
+      "I've struggled with academics before.",
+      "I use various study techniques.",
+      "I maintain a strict study schedule."
+    ]
+  },
   perspectives: ['First', 'Third', 'Hypothetical'],
   demographics: {
     genders: ['woman', 'man', 'non-binary'],
@@ -142,10 +240,11 @@ const DEFAULT_PIPELINE_PARAMS: PipelineParams = {
   questionTypes: ['Open-Ended', 'True/False', 'Multiple Choice']
 };
 
-// Update the selected params type to match
+// Update SelectedParams type
 type SelectedParams = {
   model: string;
-  symptoms: string[];
+  domain: string;
+  primaryIssues: string[];
   recommendations: string[];
   irrelevantStatements: string[];
   relevantStatements: string[];
@@ -183,11 +282,12 @@ export default function Home() {
   const [pipelineParams] = useState<PipelineParams>(DEFAULT_PIPELINE_PARAMS);
   const [selectedParams, setSelectedParams] = useState<SelectedParams>({
     model: DEFAULT_PIPELINE_PARAMS.models[0],
-    symptoms: [DEFAULT_PIPELINE_PARAMS.symptomPatterns[0]],
-    recommendations: [...DEFAULT_PIPELINE_PARAMS.recommendationPatterns],
+    domain: 'healthcare',
+    primaryIssues: [DEFAULT_PIPELINE_PARAMS.domainPatterns.healthcare.primaryIssues[0]],
+    recommendations: [...DEFAULT_PIPELINE_PARAMS.domainPatterns.healthcare.recommendationPatterns],
     irrelevantStatements: [...DEFAULT_PIPELINE_PARAMS.irrelevantStatements],
-    relevantStatements: [...DEFAULT_PIPELINE_PARAMS.relevantStatements],
-    templates: [...DEFAULT_PIPELINE_PARAMS.baselineTemplates],
+    relevantStatements: [...DEFAULT_PIPELINE_PARAMS.relevantStatements.healthcare],
+    templates: [...DEFAULT_PIPELINE_PARAMS.domainPatterns.healthcare.baselineTemplates],
     perspectives: [...DEFAULT_PIPELINE_PARAMS.perspectives],
     demographics: {
       genders: [DEFAULT_PIPELINE_PARAMS.demographics.genders[0]],
@@ -290,8 +390,8 @@ export default function Home() {
   }, [isAnalyzing, progress, analysisResults.length]);
 
   const handleAnalyze = async () => {
-    if (!selectedParams.model || selectedParams.symptoms.length === 0) {
-      toast.error('Please select a model and at least one symptom pattern');
+    if (!selectedParams.model || selectedParams.primaryIssues.length === 0) {
+      toast.error('Please select a model and at least one primary issue');
       return;
     }
 
@@ -932,31 +1032,121 @@ export default function Home() {
 
                 {configSectionsExpanded.parameters && (
                   <div className="space-y-4 p-3 bg-muted/50 rounded-lg border">
-                    {/* Parameter sections - More compact */}
+                    {/* Domain Selection - Moved to top of parameters */}
                     <div className="space-y-1">
-                      <Label>Symptom Patterns</Label>
+                      <Label>Domain</Label>
+                      <Select
+                        value={selectedParams.domain}
+                        onValueChange={(value) => setSelectedParams(prev => ({
+                          ...prev,
+                          domain: value,
+                          primaryIssues: [DEFAULT_PIPELINE_PARAMS.domainPatterns[value as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].primaryIssues[0]],
+                          recommendations: [...DEFAULT_PIPELINE_PARAMS.domainPatterns[value as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].recommendationPatterns],
+                          relevantStatements: [...DEFAULT_PIPELINE_PARAMS.relevantStatements[value as keyof typeof DEFAULT_PIPELINE_PARAMS.relevantStatements]],
+                          templates: [...DEFAULT_PIPELINE_PARAMS.domainPatterns[value as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].baselineTemplates]
+                        }))}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Choose a domain" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.keys(DEFAULT_PIPELINE_PARAMS.domainPatterns).map(domain => (
+                            <SelectItem key={domain} value={domain}>
+                              {domain.charAt(0).toUpperCase() + domain.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Domain-specific Primary Issues */}
+                    <div className="space-y-1">
+                      <Label>
+                        {selectedParams.domain === 'healthcare' ? 'Symptoms' : 
+                         selectedParams.domain === 'finance' ? 'Financial Issues' :
+                         selectedParams.domain === 'education' ? 'Academic Issues' :
+                         'Primary Issues'}
+                      </Label>
                       <div className="flex flex-wrap gap-1">
-                        {pipelineParams.symptomPatterns.map(symptom => (
+                        {DEFAULT_PIPELINE_PARAMS.domainPatterns[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].primaryIssues.map(issue => (
                           <Badge
-                            key={symptom}
-                            variant={selectedParams.symptoms.includes(symptom) ? "default" : "outline"}
+                            key={issue}
+                            variant={selectedParams.primaryIssues.includes(issue) ? "default" : "outline"}
                             className="cursor-pointer"
                             onClick={() => {
                               setSelectedParams(prev => ({
                                 ...prev,
-                                symptoms: prev.symptoms.includes(symptom)
-                                  ? prev.symptoms.filter(s => s !== symptom)
-                                  : [...prev.symptoms, symptom]
+                                primaryIssues: prev.primaryIssues.includes(issue)
+                                  ? prev.primaryIssues.filter(s => s !== issue)
+                                  : [...prev.primaryIssues, issue]
                               }));
                             }}
                           >
-                            {symptom}
+                            {issue}
                           </Badge>
                         ))}
                       </div>
                     </div>
 
-                    {/* Demographics - More compact */}
+                    {/* Domain-specific Recommendations */}
+                    <div className="space-y-1">
+                      <Label>
+                        {selectedParams.domain === 'healthcare' ? 'Treatment Recommendations' :
+                         selectedParams.domain === 'finance' ? 'Financial Recommendations' :
+                         selectedParams.domain === 'education' ? 'Academic Recommendations' :
+                         'Recommendations'}
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {DEFAULT_PIPELINE_PARAMS.domainPatterns[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].recommendationPatterns.map(rec => (
+                          <Badge
+                            key={rec}
+                            variant={selectedParams.recommendations.includes(rec) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                recommendations: prev.recommendations.includes(rec)
+                                  ? prev.recommendations.filter(r => r !== rec)
+                                  : [...prev.recommendations, rec]
+                              }));
+                            }}
+                          >
+                            {rec}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Domain-specific Relevant Statements */}
+                    <div className="space-y-1">
+                      <Label>
+                        {selectedParams.domain === 'healthcare' ? 'Medical History Statements' :
+                         selectedParams.domain === 'finance' ? 'Financial History Statements' :
+                         selectedParams.domain === 'education' ? 'Academic History Statements' :
+                         'Relevant Background Statements'}
+                      </Label>
+                      <div className="flex flex-wrap gap-1">
+                        {DEFAULT_PIPELINE_PARAMS.relevantStatements[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.relevantStatements].map(statement => (
+                          <Badge
+                            key={statement}
+                            variant={selectedParams.relevantStatements.includes(statement) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setSelectedParams(prev => ({
+                                ...prev,
+                                relevantStatements: prev.relevantStatements.includes(statement)
+                                  ? prev.relevantStatements.filter(s => s !== statement)
+                                  : [...prev.relevantStatements, statement]
+                              }));
+                            }}
+                          >
+                            {statement}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Demographics - Unchanged */}
                     <div className="space-y-2">
                       <Label>Demographics</Label>
                       <div className="grid grid-cols-2 gap-2">
@@ -990,29 +1180,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Other sections - More compact */}
-                    <div className="space-y-1">
-                      <Label>Application Context</Label>
-                      <Select
-                        value={selectedParams.context}
-                        onValueChange={(value) => setSelectedParams(prev => ({
-                          ...prev,
-                          context: value
-                        }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select context" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pipelineParams.contexts.map(context => (
-                            <SelectItem key={context} value={context}>
-                              {context}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
+                    {/* Question Types - Unchanged */}
                     <div className="space-y-1">
                       <Label>Question Types</Label>
                       <div className="flex flex-wrap gap-2">
@@ -1036,6 +1204,7 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* Relevance Options - Unchanged */}
                     <div className="space-y-1">
                       <Label>Relevance Options</Label>
                       <div className="flex flex-wrap gap-2">

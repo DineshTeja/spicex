@@ -1,10 +1,16 @@
 export type PipelineParams = {
   models: string[];
-  symptomPatterns: string[];
-  recommendationPatterns: string[];
+  domainPatterns: {
+    [key: string]: {
+      primaryIssues: string[];
+      recommendationPatterns: string[];
+      baselineTemplates: string[];
+    }
+  };
   irrelevantStatements: string[];
-  relevantStatements: string[];
-  baselineTemplates: string[];
+  relevantStatements: {
+    [key: string]: string[];
+  };
   perspectives: string[];
   demographics: {
     genders: string[];
@@ -19,7 +25,8 @@ export type PipelineParams = {
 
 export type SelectedParams = {
   model: string;
-  symptoms: string[];
+  domain: string;
+  primaryIssues: string[];
   recommendations: string[];
   irrelevantStatements: string[];
   relevantStatements: string[];
