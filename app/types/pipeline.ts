@@ -126,7 +126,8 @@ export type EmbeddingsResult = {
   size: number;
   representative_responses: string[];
   distribution: { [key: string]: number };
-  coordinates: [number, number];
+  coordinates: number[][];
+  embeddings: number[][];
 };
 
 export interface AgreementScores {
@@ -135,9 +136,59 @@ export interface AgreementScores {
     cluster_embedding: number;
     topic_embedding: number;
   };
-  cluster_mappings: {
-    cluster_to_topic: Record<string, number>;
-    cluster_to_embedding: Record<string, number>;
-    topic_to_embedding: Record<string, number>;
+  visualization_data: AgreementVisualizationPoint[];
+  mapping_data: MappingData;
+}
+
+export type AllResults = {
+  analysisResults: AnalysisResult[];
+  conceptResults: {
+    llm: {
+      concepts: [string, number][];
+      raceDistributions: [string, Map<string, number>][];
+      clusters?: Array<{
+        id: number;
+        concepts: string[];
+        frequency: number[];
+      }>;
+      extractedConcepts?: ExtractedConcepts[];
+    };
+    lda: {
+      topics: LDATopicResult[];
+      distributions: number[][];
+    } | null;
+    embeddings: {
+      cluster_id: number;
+      representative_responses: string[];
+      coordinates: number[][];
+      embeddings: number[][];
+      size: number;
+      distribution: { [key: string]: number };
+    }[];
   };
-} 
+};
+
+export interface AgreementVisualizationPoint {
+  pca_one: number;
+  pca_two: number;
+  cluster_topic_agree: number;
+  cluster_pca_agree: number;
+  topic_pca_agree: number;
+}
+
+export type ContingencyTable = {
+  table: number[][];
+  rowLabels: string[];
+  colLabels: string[];
+};
+
+export type MappingData = {
+  cluster_topic_mapping: { [key: string]: number };
+  cluster_pca_mapping: { [key: string]: number };
+  topic_pca_mapping: { [key: string]: number };
+  contingency_tables: {
+    cluster_topic: ContingencyTable;
+    cluster_pca: ContingencyTable;
+    topic_pca: ContingencyTable;
+  };
+};

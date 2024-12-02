@@ -4,6 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Chart from 'chart.js/auto';
 import { PaletteIcon } from "lucide-react";
+import { createConceptExtractionCSV, downloadCSV } from "@/app/lib/csv-utils";
+import { DownloadIcon } from "lucide-react";
+import { AnalysisResult, ExtractedConcepts } from "@/app/types/pipeline";
 
 interface ClusterData {
   id: number;
@@ -16,6 +19,8 @@ interface ConceptVisualizationsProps {
     concepts: Map<string, number>;
     raceDistributions: Map<string, Map<string, number>>;
     clusters?: ClusterData[];
+    rawResults?: AnalysisResult[];
+    extractedConcepts?: ExtractedConcepts[];
   };
 }
 
@@ -40,7 +45,7 @@ function ClusterHeatmap({ data, races, clusters }: ClusterHeatmapProps) {
     if (isNaN(value) || value === 0) return 'var(--background)';
     const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
     // Use a more subtle blue scale with higher base lightness
-    return `hsl(217, 75%, ${Math.max(85 - percentage * 0.65, 20)}%)`; 
+    return `hsl(217, 75%, ${Math.max(85 - percentage * 0.65, 20)}%)`;
   };
 
   // Helper function to determine text color based on background
@@ -61,7 +66,7 @@ function ClusterHeatmap({ data, races, clusters }: ClusterHeatmapProps) {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <div className="grid" style={{ 
+          <div className="grid" style={{
             gridTemplateColumns: `minmax(120px, auto) repeat(${clusters.length}, minmax(80px, 1fr))`,
             gap: '1px',
             backgroundColor: 'var(--border)',
@@ -110,7 +115,7 @@ function ClusterHeatmap({ data, races, clusters }: ClusterHeatmapProps) {
             <div className="w-4 h-4 rounded border border-border" style={{ backgroundColor: getColor(minValue) }} />
             <span className="text-sm text-muted-foreground">{minValue}</span>
           </div>
-          <div className="w-16 h-2 rounded-full" style={{ 
+          <div className="w-16 h-2 rounded-full" style={{
             background: `linear-gradient(to right, ${getColor(minValue)}, ${getColor(maxValue)})`,
             border: '1px solid var(--border)'
           }} />
@@ -128,7 +133,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
   const overallChartRef = useRef<HTMLCanvasElement>(null);
   const distributionChartRef = useRef<HTMLCanvasElement>(null);
   const clusterChartRef = useRef<HTMLCanvasElement>(null);
-  
+
   // Add state for cluster pagination
   const [clusterPages, setClusterPages] = useState<{ [key: number]: number }>({});
 
@@ -138,7 +143,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
     raceDistributions: Map<string, Map<string, number>>
   ) => {
     const raceFrequencies = new Map<string, number>();
-    
+
     // Initialize frequencies for all races
     Array.from(raceDistributions.keys()).forEach(race => {
       raceFrequencies.set(race, 0);
@@ -150,7 +155,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
       raceDistributions.forEach((conceptMap, race) => {
         const raceSpecificFreq = conceptMap.get(concept) || 0;
         raceFrequencies.set(
-          race, 
+          race,
           (raceFrequencies.get(race) || 0) + (raceSpecificFreq * conceptFrequency)
         );
       });
@@ -165,14 +170,14 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
 
     const races = Array.from(conceptData.raceDistributions.keys());
     const clusterLabels = conceptData.clusters.map(c => `Cluster ${c.id}`);
-    
+
     // Calculate raw frequencies for each race in each cluster
-    const distributions = conceptData.clusters.map(cluster => 
+    const distributions = conceptData.clusters.map(cluster =>
       calculateRaceDistributions(cluster, conceptData.raceDistributions)
     );
 
     // Use raw frequencies instead of percentages
-    const rawData = races.map(race => 
+    const rawData = races.map(race =>
       distributions.map(dist => dist.get(race) || 0)
     );
 
@@ -275,7 +280,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
       const ctx = clusterChartRef.current.getContext('2d');
       if (ctx) {
         // Calculate average frequency for each cluster
-        const avgFrequencies = conceptData.clusters.map(cluster => 
+        const avgFrequencies = conceptData.clusters.map(cluster =>
           cluster.frequency.reduce((a, b) => a + b, 0) / cluster.frequency.length
         );
 
@@ -300,13 +305,13 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
               },
               tooltip: {
                 callbacks: {
-                  label: function(context) {
+                  label: function (context) {
                     const cluster = conceptData.clusters![context.dataIndex];
                     const avgFreq = avgFrequencies[context.dataIndex].toFixed(2);
                     return [
                       `Average Frequency: ${avgFreq}`,
                       'Concepts:',
-                      ...cluster.concepts.map((c, i) => 
+                      ...cluster.concepts.map((c, i) =>
                         `  ${c} (${cluster.frequency[i]} occurrences)`
                       )
                     ];
@@ -329,8 +334,33 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
     }
   }, [conceptData]);
 
+  // Add this handler function
+  const handleDownloadCSV = () => {
+    if (!conceptData.rawResults || !conceptData.extractedConcepts) {
+      console.error("Missing required data for CSV export");
+      return;
+    }
+
+    const csv = createConceptExtractionCSV(
+      conceptData.rawResults,
+      conceptData.extractedConcepts
+    );
+    downloadCSV(csv, 'concept_extraction_results.csv');
+  };
+
   return (
     <div className="grid grid-cols-1 gap-6">
+      <div className="flex justify-end">
+        <Button
+          onClick={handleDownloadCSV}
+          disabled={!conceptData.rawResults || !conceptData.extractedConcepts}
+          className="flex items-center gap-2"
+        >
+          <DownloadIcon className="h-4 w-4" />
+          complete_exploded.csv
+        </Button>
+      </div>
+
       <Card>
         <CardContent className="pt-4">
           <h3 className="text-lg font-semibold mb-4">Overall Concept Distribution</h3>
@@ -366,13 +396,13 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
                   const currentPage = clusterPages[cluster.id] || 0;
                   const totalPages = getTotalPages(cluster);
                   const paginatedConcepts = getPaginatedConcepts(cluster);
-                  const conceptIndices = paginatedConcepts.map((c: string) => 
+                  const conceptIndices = paginatedConcepts.map((c: string) =>
                     cluster.concepts.indexOf(c)
                   );
 
                   return (
-                    <div 
-                      key={cluster.id} 
+                    <div
+                      key={cluster.id}
                       className="p-4 border rounded-lg bg-muted/50"
                     >
                       <div className="flex justify-between items-center mb-2">
@@ -381,11 +411,11 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
                           {cluster.concepts.length} concepts
                         </span>
                       </div>
-                      
+
                       <div className="flex flex-wrap gap-2 min-h-[50px] items-start content-start">
                         {paginatedConcepts.map((concept: string, idx: number) => (
-                          <Badge 
-                            key={concept} 
+                          <Badge
+                            key={concept}
                             variant="secondary"
                             className="flex items-center gap-1 min-h-[20px]"
                           >
@@ -410,11 +440,11 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
                           >
                             Previous
                           </Button>
-                          
+
                           <span className="text-sm text-muted-foreground">
                             {currentPage + 1} of {totalPages}
                           </span>
-                          
+
                           <Button
                             variant="outline"
                             size="sm"

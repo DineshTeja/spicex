@@ -2,22 +2,28 @@ import { Card } from "./card";
 import { Badge } from "./badge";
 import { useState } from "react";
 import { Button } from "./button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download } from "lucide-react";
+import { ResponsiveScatterPlot } from '@nivo/scatterplot';
+import { downloadCSV, createEmbeddingsExtractionCSV } from "@/app/lib/csv-utils";
+import { AnalysisResult } from "@/app/types/pipeline";
 
 type EmbeddingsResult = {
     cluster_id: number;
     size: number;
     representative_responses: string[];
     distribution: { [key: string]: number };
+    coordinates: number[][];
+    embeddings: number[][];
 };
 
 interface EmbeddingsVisualizationsProps {
     results: EmbeddingsResult[];
+    analysisResults?: AnalysisResult[];
 }
 
 const ITEMS_PER_PAGE = 5;
 
-export function EmbeddingsVisualizations({ results }: EmbeddingsVisualizationsProps) {
+export function EmbeddingsVisualizations({ results, analysisResults }: EmbeddingsVisualizationsProps) {
     const [pagination, setPagination] = useState<{
         [key: number]: {
             page: number;
@@ -25,8 +31,77 @@ export function EmbeddingsVisualizations({ results }: EmbeddingsVisualizationsPr
         };
     }>({});
 
+    // Prepare data for scatter plot
+    const scatterData = results.map(cluster => ({
+        id: `Cluster ${cluster.cluster_id + 1}`,
+        data: cluster.coordinates.map((coord, idx) => ({
+            x: coord[0],
+            y: coord[1],
+            response: cluster.representative_responses[idx]
+        }))
+    }));
+
     return (
         <div className="space-y-6">
+            {/* Add download button at the top */}
+            <div className="flex justify-end">
+                <Button
+                    onClick={() => {
+                        if (!analysisResults) {
+                            console.error("Missing required data for embeddings CSV export");
+                            return;
+                        }
+                        const csv = createEmbeddingsExtractionCSV(analysisResults, results);
+                        downloadCSV(csv, 'data_with_pca.csv');
+                    }}
+                    className="flex items-center gap-2"
+                    disabled={!analysisResults}
+                >
+                    <Download className="h-4 w-4" />
+                    data_with_pca.csv
+                </Button>
+            </div>
+
+            {/* PCA Visualization */}
+            <Card className="p-4">
+                <h4 className="font-medium mb-4">PCA Visualization of Embeddings</h4>
+                <div style={{ height: '400px' }}>
+                    <ResponsiveScatterPlot
+                        data={scatterData}
+                        margin={{ top: 20, right: 20, bottom: 70, left: 70 }}
+                        xScale={{ type: 'linear', min: 'auto', max: 'auto' }}
+                        yScale={{ type: 'linear', min: 'auto', max: 'auto' }}
+                        axisTop={null}
+                        axisRight={null}
+                        axisBottom={{
+                            tickSize: 5,
+                            tickPadding: 5,
+                            tickRotation: 0,
+                            legend: 'PC1',
+                            legendPosition: 'middle',
+                            legendOffset: 46
+                        }}
+                        axisLeft={{
+                            tickSize: 5,
+                            tickPadding: 5,
+                            tickRotation: 0,
+                            legend: 'PC2',
+                            legendPosition: 'middle',
+                            legendOffset: -60
+                        }}
+                        colors={{ scheme: 'category10' }}
+                        tooltip={({ node }) => (
+                            <div className="bg-white p-2 shadow-lg rounded-lg border text-sm">
+                                <strong>{node.serieId}</strong>
+                                <br />
+                                {node.data.response.slice(0, 100)}...
+                            </div>
+                        )}
+                    />
+                </div>
+            </Card>
+
+            {/* Existing cluster cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {results.map((cluster) => (
                     <Card key={cluster.cluster_id} className="p-4">

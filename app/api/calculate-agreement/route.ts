@@ -1,111 +1,107 @@
 import { NextResponse } from 'next/server';
-import { AgreementScores } from '@/app/types/pipeline';
 import { spawn } from 'child_process';
 import { join } from 'path';
-
-interface AllResults {
-  analysisResults: Array<{
-    id: string;
-    modelName: string;
-    concept: string;
-    demographics: string[];
-    context: string;
-    details: string;
-    timestamp: string;
-    prompts: Array<{
-      text: string;
-      responses: string[];
-      metadata: {
-        perspective: string;
-        demographics: string[];
-        context: string;
-        questionType: string;
-      };
-    }>;
-  }>;
-  conceptResults: {
-    llm: {
-      concepts: [string, number][];
-      raceDistributions: [string, Record<string, number>][];
-      clusters: Array<{
-        id: number;
-        concepts: string[];
-        frequency: number[];
-      }>;
-    };
-    lda: {
-      topics: Array<{
-        topic_id: number;
-        words: string[];
-        weights: number[];
-      }>;
-      distributions: number[][];
-    };
-    embeddings: Array<{
-      cluster_id: number;
-      size: number;
-      representative_responses: string[];
-      distribution: Record<string, number>;
-    }>;
-  };
-}
-
-async function runPythonScript(data: AllResults): Promise<AgreementScores> {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python', [
-      join(process.cwd(), 'new_agreement_score.py')
-    ]);
-
-    let result = '';
-    let error = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      result += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      error += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Python process exited with code ${code}: ${error}`));
-        return;
-      }
-      try {
-        const parsedResult = JSON.parse(result);
-        resolve(parsedResult);
-      } catch (e) {
-        reject(new Error(`Failed to parse Python output: ${e}`));
-      }
-    });
-
-    const serializedData = {
-      analysisResults: data.analysisResults,
-      conceptResults: {
-        llm: {
-          ...data.conceptResults.llm,
-          raceDistributions: data.conceptResults.llm.raceDistributions.map(
-            ([race, dist]) => [race, dist instanceof Map ? Object.fromEntries(dist) : dist]
-          )
-        },
-        lda: data.conceptResults.lda,
-        embeddings: data.conceptResults.embeddings
-      }
-    };
-
-    pythonProcess.stdin.write(JSON.stringify(serializedData));
-    pythonProcess.stdin.end();
-  });
-}
+import fs from 'fs/promises';
+import path from 'path';
 
 export async function POST(req: Request) {
+  const publicDir = path.join(process.cwd(), 'public');
+  const csvPath = path.join(publicDir, 'merged_analysis.csv');
+  
   try {
-    const data = await req.json() as AllResults;
-    const agreementResults = await runPythonScript(data);
-    return NextResponse.json(agreementResults);
+    const data = await req.json();
+    
+    console.log('Current working directory:', process.cwd());
+    console.log('Public directory path:', publicDir);
+    console.log('CSV path:', csvPath);
+    
+    // Ensure public directory exists
+    try {
+      await fs.access(publicDir);
+      console.log('Public directory exists');
+    } catch {
+      console.log('Creating public directory...');
+      await fs.mkdir(publicDir, { recursive: true });
+    }
+    
+    // Log CSV content length
+    console.log('CSV content length:', data.mergedCsv.length);
+    
+    // Write CSV file with explicit encoding
+    try {
+      await fs.writeFile(csvPath, data.mergedCsv, {
+        encoding: 'utf-8',
+        flag: 'w'
+      });
+      console.log('CSV file written successfully');
+      
+      // Verify file exists
+      const stats = await fs.stat(csvPath);
+      console.log('CSV file size:', stats.size);
+    } catch (writeError) {
+      console.error('Error writing CSV file:', writeError);
+      throw writeError;
+    }
+    
+    return new Promise((resolve, reject) => {
+      console.log('Spawning Python process...');
+      const pythonProcess = spawn('python', [
+        join(process.cwd(), 'new_agreement_score.py')
+      ]);
+
+      let result = '';
+      let error = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        result += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        const errorStr = data.toString();
+        console.error('Python stderr:', errorStr);
+        error += errorStr;
+      });
+
+      pythonProcess.on('close', async (code) => {
+        console.log('Python process exited with code:', code);
+        
+        // Clean up the CSV file
+        try {
+          await fs.unlink(csvPath);
+          console.log('CSV file cleaned up successfully');
+        } catch (e) {
+          console.error('Failed to clean up CSV file:', e);
+        }
+
+        if (code !== 0) {
+          console.error('Python error:', error);
+          reject(new Error(`Python process exited with code ${code}: ${error}`));
+          return;
+        }
+
+        try {
+          const parsedResult = JSON.parse(result);
+          resolve(NextResponse.json(parsedResult));
+        } catch (e) {
+          console.error('Failed to parse Python output:', e);
+          reject(new Error(`Failed to parse Python output: ${e}`));
+        }
+      });
+
+      pythonProcess.on('error', (err) => {
+        console.error('Python process error:', err);
+        reject(new Error(`Failed to start Python process: ${err.message}`));
+      });
+    });
+
   } catch (error) {
-    console.error('Error calculating agreement scores:', error);
+    console.error('Error in calculate-agreement route:', error);
+    // Clean up file if it exists
+    try {
+      await fs.unlink(csvPath);
+    } catch {
+      // Ignore cleanup errors
+    }
     return NextResponse.json(
       { 
         error: 'Failed to calculate agreement scores', 

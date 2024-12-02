@@ -79,8 +79,8 @@ export async function POST(req: Request) {
         );
 
         // Track all concepts for clustering
-        let allConcepts: string[] = [];
-        let conceptsByRace = new Map<string, string[]>();
+        const allConcepts: string[] = [];
+        const conceptsByRace = new Map<string, string[]>();
 
         // Process each result
         for (const result of results) {
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
         }
 
         // Perform clustering analysis
-        const uniqueConcepts = Array.from(new Set(allConcepts));
+        // const uniqueConcepts = Array.from(new Set(allConcepts));
         const conceptFrequencies = new Map<string, number>();
         allConcepts.forEach(concept => {
           conceptFrequencies.set(concept, (conceptFrequencies.get(concept) || 0) + 1);

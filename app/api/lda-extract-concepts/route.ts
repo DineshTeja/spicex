@@ -83,7 +83,7 @@ export async function POST(req: Request) {
                   )
                 );
               } else {
-                // Send the extracted concepts
+                // Send the extracted topics and distributions
                 controller.enqueue(
                   encoder.encode(
                     `data: ${JSON.stringify({

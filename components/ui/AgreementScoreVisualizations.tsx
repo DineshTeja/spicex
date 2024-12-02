@@ -1,16 +1,70 @@
 'use client';
 
-import { AgreementScores } from '@/app/types/pipeline';
+import { AgreementScores, AgreementVisualizationPoint, ContingencyTable } from '@/app/types/pipeline';
 import { Scatter, ScatterChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type AgreementScoreVisualizationsProps = {
   agreementData: AgreementScores | null;
-  embeddingsData: Array<{ pca_one: number; pca_two: number }>;
+  embeddingsData?: { pca_one: number; pca_two: number; }[];
 };
 
+const ContingencyTableView = ({ table, title }: { table: ContingencyTable, title: string }) => (
+  <Card className="w-full">
+    <CardContent className="p-4">
+      <h3 className="text-sm font-medium mb-4">{title}</h3>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>-</TableHead>
+              {table.colLabels.map((label, i) => (
+                <TableHead key={i}>{label}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {table.table.map((row, i) => (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{table.rowLabels[i]}</TableCell>
+                {row.map((cell, j) => (
+                  <TableCell key={j}>{cell}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const MappingView = ({ 
+  mapping, 
+  title 
+}: { 
+  mapping: { [key: string]: number }, 
+  title: string 
+}) => (
+  <Card className="w-full">
+    <CardContent className="p-4">
+      <h3 className="text-sm font-medium mb-4">{title}</h3>
+      <div className="space-y-2">
+        {Object.entries(mapping).map(([key, value]) => (
+          <div key={key} className="flex justify-between items-center text-sm">
+            <span>{key}</span>
+            <span>→</span>
+            <span>{value}</span>
+          </div>
+        ))}
+      </div>
+    </CardContent>
+  </Card>
+);
+
 export function AgreementScoreVisualizations({
-  agreementData,
-  embeddingsData
+  agreementData
 }: AgreementScoreVisualizationsProps) {
   if (!agreementData) {
     return (
@@ -20,22 +74,13 @@ export function AgreementScoreVisualizations({
     );
   }
 
-  // Create chart data from embeddings data and agreement scores
-  const chartData = embeddingsData.map(embedding => ({
-    pca_one: embedding.pca_one ?? 0,
-    pca_two: embedding.pca_two ?? 0,
-    clusterTopicAgree: agreementData.agreement_scores.cluster_topic,
-    clusterEmbeddingAgree: agreementData.agreement_scores.cluster_embedding,
-    topicEmbeddingAgree: agreementData.agreement_scores.topic_embedding
-  }));
-
   const ScatterPlot = ({
     data,
     dataKey,
     title
   }: {
-    data: typeof chartData;
-    dataKey: keyof (typeof chartData)[0];
+    data: AgreementVisualizationPoint[];
+    dataKey: keyof Pick<AgreementVisualizationPoint, 'cluster_topic_agree' | 'cluster_pca_agree' | 'topic_pca_agree'>;
     title: string;
   }) => (
     <div className="h-[300px] w-full p-4 border rounded-lg">
@@ -56,15 +101,15 @@ export function AgreementScoreVisualizations({
             label={{ value: "PCA Dimension 2", angle: -90, position: "insideLeft" }}
           />
           <Tooltip
-            formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, 'Agreement']}
-            labelFormatter={(label) => `PCA 1: ${label.toFixed(2)}`}
+            formatter={(value: number) => [value ? 'Agree' : 'Disagree', 'Agreement']}
+            labelFormatter={(label: number) => `PCA 1: ${label.toFixed(2)}`}
           />
           <Scatter name={title} data={data} fill="#8884d8">
-            {data.map((entry, idx) => (
+            {data.map((entry: AgreementVisualizationPoint, idx: number) => (
               <circle
                 key={idx}
                 r={4}
-                fill={`hsl(${entry[dataKey] * 120}, 70%, 50%)`}
+                fill={entry[dataKey] ? '#22c55e' : '#ef4444'}
                 fillOpacity={0.6}
               />
             ))}
@@ -90,20 +135,51 @@ export function AgreementScoreVisualizations({
           <p className="text-lg">{(agreementData.agreement_scores.topic_embedding * 100).toFixed(1)}%</p>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MappingView 
+          mapping={agreementData.mapping_data.cluster_topic_mapping} 
+          title="Cluster to Topic Mapping" 
+        />
+        <MappingView 
+          mapping={agreementData.mapping_data.cluster_pca_mapping} 
+          title="Cluster to PCA Mapping" 
+        />
+        <MappingView 
+          mapping={agreementData.mapping_data.topic_pca_mapping} 
+          title="Topic to PCA Mapping" 
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ContingencyTableView 
+          table={agreementData.mapping_data.contingency_tables.cluster_topic}
+          title="Cluster-Topic Contingency Table"
+        />
+        <ContingencyTableView 
+          table={agreementData.mapping_data.contingency_tables.cluster_pca}
+          title="Cluster-PCA Contingency Table"
+        />
+        <ContingencyTableView 
+          table={agreementData.mapping_data.contingency_tables.topic_pca}
+          title="Topic-PCA Contingency Table"
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4">
         <ScatterPlot
-          data={chartData}
-          dataKey="clusterTopicAgree"
+          data={agreementData.visualization_data}
+          dataKey="cluster_topic_agree"
           title="Cluster-Topic Agreement"
         />
         <ScatterPlot
-          data={chartData}
-          dataKey="clusterEmbeddingAgree"
+          data={agreementData.visualization_data}
+          dataKey="cluster_pca_agree"
           title="Cluster-Embedding Agreement"
         />
         <ScatterPlot
-          data={chartData}
-          dataKey="topicEmbeddingAgree"
+          data={agreementData.visualization_data}
+          dataKey="topic_pca_agree"
           title="Topic-Embedding Agreement"
         />
       </div>
