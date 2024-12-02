@@ -31,11 +31,16 @@ def clean_text(text: str) -> str:
              len(token) > 2]
     return ' '.join(tokens)
 
-def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
+def extract_concepts(input_data: List[Dict], n_topics: int = 5) -> Dict:
     """Extract concepts using LDA"""
     try:
         # Initialize NLTK
         initialize_nltk()
+
+        # Separate responses and races
+        responses = [item['text'] for item in input_data]
+        races = [item['race'] for item in input_data]
+        valid_races = {'Asian', 'Black', 'Hispanic', 'White', 'Unknown'}
 
         print(f"Received {len(responses)} responses", file=sys.stderr)
         
@@ -47,15 +52,16 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
             return {
                 'error': 'Not enough responses for analysis',
                 'topics': [],
-                'doc_topic_distributions': []
+                'doc_topic_distributions': [],
+                'race_distributions': []
             }
         
         # Create document-term matrix with more lenient parameters
         vectorizer = CountVectorizer(
-            max_df=0.99,  # More lenient max_df
-            min_df=1,     # Allow terms that appear at least once
+            max_df=0.99,
+            min_df=1,
             stop_words='english',
-            max_features=1000  # Limit vocabulary size
+            max_features=1000
         )
         
         try:
@@ -65,22 +71,21 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
             return {
                 'error': 'Failed to create document-term matrix',
                 'topics': [],
-                'doc_topic_distributions': []
+                'doc_topic_distributions': [],
+                'race_distributions': []
             }
 
-        print(doc_term_matrix.shape, file=sys.stderr)  
         # Check if we have any terms
         if doc_term_matrix.shape[1] == 0:
             return {
                 'error': 'No terms remained after text processing',
                 'topics': [],
-                'doc_topic_distributions': []
+                'doc_topic_distributions': [],
+                'race_distributions': []
             }
         
         # Adjust number of topics based on data size
         n_topics = min(n_topics, len(cleaned_responses), doc_term_matrix.shape[1])
-        
-        print(f"Using {n_topics} topics", file=sys.stderr)
         
         # Train LDA model
         lda = LatentDirichletAllocation(
@@ -89,8 +94,8 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
             max_iter=20,
             learning_method='online',
             n_jobs=-1,
-            doc_topic_prior=0.1,  # Make topics more distinct
-            topic_word_prior=0.01  # Make word distributions more peaked
+            doc_topic_prior=0.1,
+            topic_word_prior=0.01
         )
         
         try:
@@ -100,16 +105,17 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
             return {
                 'error': 'Failed to perform topic modeling',
                 'topics': [],
-                'doc_topic_distributions': []
+                'doc_topic_distributions': [],
+                'race_distributions': []
             }
         
         # Get feature names
         feature_names = vectorizer.get_feature_names_out()
-        
-        print(feature_names, file=sys.stderr)
 
         # Extract topics and their words
         topics = []
+        race_distributions = []
+        
         for topic_idx, topic in enumerate(lda.components_):
             top_word_indices = topic.argsort()[:-10-1:-1]
             top_words = [feature_names[i] for i in top_word_indices]
@@ -120,20 +126,29 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
             if total_weight > 0:
                 topic_weight = [w/total_weight for w in topic_weight]
             
+            # Get documents strongly associated with this topic
+            topic_threshold = 0.3  # Adjust as needed
+            topic_docs = [i for i, dist in enumerate(doc_topics) if dist[topic_idx] > topic_threshold]
+            
+            # Calculate race distribution for this topic
+            topic_races = [races[i] for i in topic_docs]
+            race_dist = {race: 0 for race in valid_races}
+            for race in topic_races:
+                if race in valid_races:
+                    race_dist[race] += 1
+            
             topics.append({
                 'topic_id': int(topic_idx),
                 'words': top_words,
                 'weights': topic_weight
             })
-        
-        # Get document-topic distributions
-        doc_topic_dist = doc_topics.tolist()
-
-        print(doc_topic_dist, file=sys.stderr)
+            
+            race_distributions.append(race_dist)
         
         return {
             'topics': topics,
-            'doc_topic_distributions': doc_topic_dist
+            'doc_topic_distributions': doc_topics.tolist(),
+            'race_distributions': race_distributions
         }
         
     except Exception as e:
@@ -141,38 +156,41 @@ def extract_concepts(responses: List[str], n_topics: int = 5) -> Dict:
         return {
             'error': f'Unexpected error: {str(e)}',
             'topics': [],
-            'doc_topic_distributions': []
+            'doc_topic_distributions': [],
+            'race_distributions': []
         }
 
 if __name__ == "__main__":
     try:
         # Read input from stdin
-        input_data = sys.stdin.read()
-        responses = json.loads(input_data)
+        input_data = json.loads(sys.stdin.read())
         
-        # Ensure we have a list of responses
-        if not isinstance(responses, list):
+        # Ensure we have a list of dictionaries with text and race
+        if not isinstance(input_data, list):
             print(json.dumps({
-                'error': 'Input must be a list of responses',
+                'error': 'Input must be a list of response objects',
                 'topics': [],
-                'doc_topic_distributions': []
+                'doc_topic_distributions': [],
+                'race_distributions': []
             }))
             sys.exit(1)
             
-        results = extract_concepts(responses)
+        results = extract_concepts(input_data)
         print(json.dumps(results))
         
     except json.JSONDecodeError as e:
         print(json.dumps({
             'error': f'Invalid JSON input: {str(e)}',
             'topics': [],
-            'doc_topic_distributions': []
+            'doc_topic_distributions': [],
+            'race_distributions': []
         }))
         sys.exit(1)
     except Exception as e:
         print(json.dumps({
             'error': f'Script error: {str(e)}',
             'topics': [],
-            'doc_topic_distributions': []
+            'doc_topic_distributions': [],
+            'race_distributions': []
         }))
         sys.exit(1) 

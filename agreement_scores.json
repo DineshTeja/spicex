@@ -1,0 +1,30 @@
+{
+  "overall": {
+    "cluster_topic": 1.0,
+    "cluster_embedding": 1.0,
+    "topic_embedding": 1.0
+  },
+  "by_demographic": {
+    "Black": {
+      "cluster_topic": 1.0,
+      "cluster_embedding": 1.0,
+      "topic_embedding": 1.0
+    },
+    "Hispanic": {
+      "cluster_topic": 1.0,
+      "cluster_embedding": 1.0,
+      "topic_embedding": 1.0
+    },
+    "Asian": {
+      "cluster_topic": 1.0,
+      "cluster_embedding": 1.0,
+      "topic_embedding": 1.0
+    },
+    "White": {
+      "cluster_topic": 1.0,
+      "cluster_embedding": 1.0,
+      "topic_embedding": 1.0
+    }
+  },
+  "cluster_topic_mapping": {
+    

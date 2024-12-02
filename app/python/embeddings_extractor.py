@@ -41,9 +41,18 @@ def get_embeddings(texts):
 
 def extract_concepts_with_embeddings(input_data):
     try:
-        # Parse input data
-        responses = [item["response"] for item in input_data]
-        races = [item["race"] for item in input_data]
+        # Parse input data - ensure one entry per response
+        responses = []
+        races = []
+        valid_races = {'Asian', 'Black', 'Hispanic', 'White', 'Unknown'}
+        
+        # Create unique entries
+        for item in input_data:
+            if isinstance(item, dict) and 'response' in item and 'race' in item:
+                responses.append(item['response'])
+                # Validate race
+                race = item['race'] if item['race'] in valid_races else 'Unknown'
+                races.append(race)
         
         # Get embeddings
         embeddings = get_embeddings(responses)
@@ -56,7 +65,7 @@ def extract_concepts_with_embeddings(input_data):
         }), flush=True)
 
         # Clustering
-        n_clusters = min(2, len(responses))  # Ensure we don't try to create more clusters than samples
+        n_clusters = min(4, len(responses))  # Adjust number of clusters as needed
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         cluster_labels = kmeans.fit_predict(embeddings)
         
@@ -65,16 +74,20 @@ def extract_concepts_with_embeddings(input_data):
         for i in range(n_clusters):
             cluster_mask = cluster_labels == i
             cluster_responses = np.array(responses)[cluster_mask]
+            cluster_races = np.array(races)[cluster_mask]
             
             if len(cluster_responses) > 0:
-                # Get all responses in the cluster as representative responses
+                # Get representative responses
                 representative_responses = cluster_responses.tolist()
                 
-                # Calculate distribution
-                distribution = {
-                    race: int(np.sum((np.array(races)[cluster_mask] == race)))
-                    for race in set(races)
-                }
+                # Initialize distribution with all races set to 0
+                distribution = {race: 0 for race in valid_races}
+                
+                # Count actual occurrences of each race in this cluster
+                unique_races, race_counts = np.unique(cluster_races, return_counts=True)
+                for race, count in zip(unique_races, race_counts):
+                    if race in valid_races:  # Extra validation
+                        distribution[race] = int(count)
                 
                 cluster_concepts.append({
                     "cluster_id": int(i),

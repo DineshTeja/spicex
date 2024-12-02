@@ -4,4 +4,6 @@ scikit-learn
 nltk
 sentence-transformers
 torch
-transformers 
+transformers
+numpy>=1.21.0
+scipy>=1.7.0 

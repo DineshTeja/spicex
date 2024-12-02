@@ -1,10 +1,52 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 import { AnalysisResult, ExtractedConcepts } from '@/app/types/pipeline';
+import { spawn } from 'child_process';
+import path from 'path';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const RACE_CATEGORIES = ['Asian', 'Black', 'Hispanic', 'White', 'Native American'];
+
+async function runConceptClustering(conceptFrequencies: Map<string, number>) {
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python3', [
+      path.join(process.cwd(), 'app/python/concept_clustering.py')
+    ]);
+
+    let outputData = '';
+    let errorData = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      outputData += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      errorData += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Python clustering error:', errorData);
+        reject(new Error(`Clustering failed with code ${code}`));
+        return;
+      }
+      try {
+        const clusters = JSON.parse(outputData);
+        resolve(clusters);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    // Send concept frequency data to Python script
+    const inputData = Array.from(conceptFrequencies.entries());
+    pythonProcess.stdin.write(JSON.stringify(inputData));
+    pythonProcess.stdin.end();
+  });
+}
 
 export async function POST(req: Request) {
   const encoder = new TextEncoder();
@@ -18,6 +60,7 @@ export async function POST(req: Request) {
         let processedResponses = 0;
         results.forEach(result => {
           result.prompts.forEach(prompt => {
+            // Each response should be processed once for its specific race
             totalResponses += prompt.responses.length;
           });
         });
@@ -35,9 +78,20 @@ export async function POST(req: Request) {
           )
         );
 
+        // Track all concepts for clustering
+        let allConcepts: string[] = [];
+        let conceptsByRace = new Map<string, string[]>();
+
         // Process each result
         for (const result of results) {
           for (const prompt of result.prompts) {
+            // Get the race from the prompt's metadata instead of result demographics
+            const race = prompt.metadata.demographics.find(d => 
+              RACE_CATEGORIES.includes(d)
+            );
+
+            if (!race) continue;
+
             for (const response of prompt.responses) {
               try {
                 processedResponses++;
@@ -53,14 +107,22 @@ export async function POST(req: Request) {
                   )
                 );
 
+                // Extract concepts for this specific response
                 const concepts = await extractConcepts(response);
                 
                 if (concepts.length > 0) {
+                  allConcepts.push(...concepts);
+                  
+                  // Track concepts by race for clustering
+                  if (!conceptsByRace.has(race)) {
+                    conceptsByRace.set(race, []);
+                  }
+                  conceptsByRace.get(race)?.push(...concepts);
+
+                  // Create and send ExtractedConcepts object
                   const extractedConcept: ExtractedConcepts = {
                     concepts,
-                    race: result.demographics.find(d => 
-                      ['African', 'Asian', 'Caucasian', 'Hispanic', 'Native American'].includes(d)
-                    ),
+                    race,
                     response: response.replace(/[\n\r]+/g, ' ').trim()
                   };
 
@@ -88,6 +150,38 @@ export async function POST(req: Request) {
               }
             }
           }
+        }
+
+        // Perform clustering analysis
+        const uniqueConcepts = Array.from(new Set(allConcepts));
+        const conceptFrequencies = new Map<string, number>();
+        allConcepts.forEach(concept => {
+          conceptFrequencies.set(concept, (conceptFrequencies.get(concept) || 0) + 1);
+        });
+
+        // After collecting all concepts, perform clustering
+        try {
+          const clusters = await runConceptClustering(conceptFrequencies);
+          
+          // Send clustering results
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'clusters',
+                clusters
+              })}\n\n`
+            )
+          );
+        } catch (error) {
+          console.error('Clustering error:', error);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'error',
+                error: 'Clustering failed: ' + (error instanceof Error ? error.message : 'Unknown error')
+              })}\n\n`
+            )
+          );
         }
 
         // Send completion message
@@ -193,6 +287,6 @@ async function extractConcepts(text: string) {
     return [];
   } catch (error) {
     console.error('OpenAI API error:', error);
-    throw error; // Propagate the error to handle it in the outer try-catch
+    throw error;
   }
 } 

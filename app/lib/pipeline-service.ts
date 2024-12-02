@@ -13,6 +13,26 @@ export type BatchResults = {
   };
 };
 
+// Helper function to generate all demographic combinations
+function generateDemographicCombinations(demographics: SelectedParams['demographics']) {
+  const { genders, ages, ethnicities, socioeconomic } = demographics;
+  
+  const combinations: string[][] = [];
+  
+  // Generate all possible combinations
+  for (const gender of genders) {
+    for (const age of ages) {
+      for (const ethnicity of ethnicities) {
+        for (const social of socioeconomic) {
+          combinations.push([gender, age, ethnicity, social]);
+        }
+      }
+    }
+  }
+  
+  return combinations;
+}
+
 export async function processBatch(
   prompts: string[], 
   params: SelectedParams, 
@@ -23,85 +43,94 @@ export async function processBatch(
   let completedPrompts = 0;
   const MAX_RESPONSE_SIZE = 1024 * 1024; // 1MB limit per response
 
-  for (const prompt of prompts) {
-    const responses: string[] = [];
-    
-    onProgress?.({
-      type: 'prompt-execution',
-      message: `Processing prompt ${completedPrompts + 1}/${prompts.length}`,
-      prompt: prompt.slice(0, 100) + (prompt.length > 100 ? '...' : ''), // Truncate long prompts in progress updates
-      completedPrompts,
-      totalPrompts: prompts.length
-    });
-    
-    for (let i = 0; i < batchSize; i++) {
-      try {
-        const response = await retrieveSingleCall(prompt, params.model);
-        if (response && response.length < MAX_RESPONSE_SIZE) {
-          // Sanitize response to ensure it's valid JSON when stringified
-          const sanitizedResponse = response
-            .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Remove control characters
-            .trim();
-          responses.push(sanitizedResponse);
-        } else {
-          console.warn('Response exceeded size limit or was empty');
-          responses.push('Response too large or empty');
+  // Generate all demographic combinations
+  const demographicCombinations = generateDemographicCombinations(params.demographics);
+  
+  // For each prompt template
+  for (const promptTemplate of prompts) {
+    // For each demographic combination
+    for (const demographics of demographicCombinations) {
+      const responses: string[] = [];
+      
+      // Create a prompt with the specific demographic combination
+      const prompt = promptTemplate.replace(
+        /\{([^}]+)\}/g, 
+        (_, placeholder) => {
+          if (placeholder.includes('demographic')) {
+            return demographics.join(' ');
+          }
+          return placeholder;
         }
-      } catch (error) {
-        console.error(`Batch ${i} failed for prompt:`, prompt, error);
-        responses.push('Failed to get response');
+      );
+      
+      onProgress?.({
+        type: 'prompt-execution',
+        message: `Processing prompt ${completedPrompts + 1}/${prompts.length * demographicCombinations.length}`,
+        prompt: prompt.slice(0, 100) + (prompt.length > 100 ? '...' : ''),
+        completedPrompts,
+        totalPrompts: prompts.length * demographicCombinations.length
+      });
+      
+      for (let i = 0; i < batchSize; i++) {
+        try {
+          const response = await retrieveSingleCall(prompt, params.model);
+          if (response && response.length < MAX_RESPONSE_SIZE) {
+            const sanitizedResponse = response
+              .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F-\u009F]/g, '')
+              .trim();
+            responses.push(sanitizedResponse);
+          } else {
+            console.warn('Response exceeded size limit or was empty');
+            responses.push('Response too large or empty');
+          }
+        } catch (error) {
+          console.error(`Batch ${i} failed for prompt:`, prompt, error);
+          responses.push('Failed to get response');
+        }
       }
+
+      completedPrompts++;
+
+      // Create metadata for this specific combination
+      const safeMetadata = {
+        perspective: prompt.includes("I am") ? "First" : 
+                    prompt.includes("My friend") ? "Third" : "Hypothetical",
+        demographics: demographics.map(d => d.slice(0, 100)),
+        context: params.context.slice(0, 1000),
+        questionType: params.questionTypes.find(qt => prompt.includes(qt)) || "Unknown"
+      };
+
+      results.push({
+        prompt: prompt.slice(0, 1000),
+        responses,
+        metadata: safeMetadata
+      });
     }
-
-    completedPrompts++;
-
-    // Create a safe version of the metadata
-    const safeMetadata = {
-      perspective: prompt.includes("I am") ? "First" : 
-                  prompt.includes("My friend") ? "Third" : "Hypothetical",
-      demographics: [
-        ...params.demographics.genders,
-        ...params.demographics.ages,
-        ...params.demographics.ethnicities,
-        ...params.demographics.socioeconomic
-      ].map(d => d.slice(0, 100)), // Limit length of demographic strings
-      context: params.context.slice(0, 1000), // Limit context length
-      questionType: params.questionTypes.find(qt => prompt.includes(qt)) || "Unknown"
-    };
-
-    results.push({
-      prompt: prompt.slice(0, 1000), // Limit prompt length
-      responses,
-      metadata: safeMetadata
-    });
   }
 
   return results;
 }
 
 export async function runAnalysisPipeline(
-  params: SelectedParams, 
-  // batchSize: number = params.iterations,
+  params: SelectedParams,
   onProgress?: ProgressCallback
 ): Promise<AnalysisResult> {
-  // Generate prompts
   onProgress?.({
     type: 'prompt-generation',
     message: 'Generating prompts...'
   });
   
-  const prompts = generatePrompts(params);
+  const promptTemplates = generatePrompts(params);
+  const demographicCombinations = generateDemographicCombinations(params.demographics);
 
   onProgress?.({
     type: 'prompt-generation',
-    message: `Generated ${prompts.length} prompts, running ${params.iterations} iterations each`,
-    totalPrompts: prompts.length
+    message: `Generated ${promptTemplates.length} prompt templates with ${demographicCombinations.length} demographic combinations each`,
+    totalPrompts: promptTemplates.length * demographicCombinations.length
   });
   
-  // Process prompts in batches
-  const batchResults = await processBatch(prompts, params, params.iterations, onProgress);
+  const batchResults = await processBatch(promptTemplates, params, params.iterations, onProgress);
   
-  // Create analysis result
   const result: AnalysisResult = {
     id: crypto.randomUUID(),
     modelName: params.model,
@@ -113,12 +142,12 @@ export async function runAnalysisPipeline(
       ...params.demographics.socioeconomic
     ],
     context: params.context,
-    details: `Analyzed ${prompts.length} prompts with ${params.iterations} iterations each.`,
+    details: `Analyzed ${promptTemplates.length} prompts with ${demographicCombinations.length} demographic combinations each`,
     timestamp: new Date().toISOString(),
-    prompts: batchResults.map(r => ({
-      text: r.prompt,
-      responses: r.responses,
-      metadata: r.metadata
+    prompts: batchResults.map(br => ({
+      text: br.prompt,
+      responses: br.responses,
+      metadata: br.metadata
     }))
   };
 

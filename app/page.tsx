@@ -30,11 +30,18 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useHotkeys } from 'react-hotkeys-hook';
-import { AnalysisResult, PromptResult, ExtractedConcepts, LDATopicResult, EmbeddingsResult } from './types/pipeline';
+import { AnalysisResult, PromptResult, LDATopicResult, EmbeddingsResult, AgreementScores } from './types/pipeline';
 import { ConceptVisualizations } from '@/components/ui/ConceptVisualizations';
 import { Input } from "@/components/ui/input";
 import { EmbeddingsVisualizations } from "@/components/ui/EmbeddingsVisualizations";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AgreementScoreVisualizations } from "@/components/ui/AgreementScoreVisualizations";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type SavedAnalysis = {
   id: string;
@@ -279,6 +286,32 @@ type ExtractionProgress = {
   type: 'llm' | 'lda' | 'embeddings';
 };
 
+type AllResults = {
+  analysisResults: AnalysisResult[];
+  conceptResults: {
+    llm: {
+      concepts: [string, number][];
+      raceDistributions: [string, Map<string, number>][];
+      clusters?: Array<{
+        id: number;
+        concepts: string[];
+        frequency: number[];
+      }>;
+    };
+    lda: {
+      topics: LDATopicResult[];
+      distributions: number[][];
+    } | null;
+    embeddings: EmbeddingsResult[];
+  };
+}
+
+type ClusterData = {
+  id: number;
+  concepts: string[];
+  frequency: number[];
+};
+
 export default function Home() {
   const [pipelineParams] = useState<PipelineParams>(DEFAULT_PIPELINE_PARAMS);
   const [selectedParams, setSelectedParams] = useState<SelectedParams>({
@@ -335,6 +368,8 @@ export default function Home() {
   // Add new state for file upload
   const [isProcessingFile, setIsProcessingFile] = useState(false);
 
+  const [isLoadingConceptsFile, setIsLoadingConceptsFile] = useState(false);
+
   // Update extraction progress state to handle multiple types
   const [extractionProgress, setExtractionProgress] = useState<{
     llm?: ExtractionProgress;
@@ -357,6 +392,9 @@ export default function Home() {
 
   // Add this state for embeddings results
   const [embeddingsResults, setEmbeddingsResults] = useState<EmbeddingsResult[]>([]);
+
+  // Add new state
+  const [agreementData, setAgreementData] = useState<AgreementScores | null>(null);
 
   // Mobile responsiveness
   useEffect(() => {
@@ -432,7 +470,7 @@ export default function Home() {
             if (line.trim().startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(5));
-                
+
                 if (data.type === 'complete') {
                   results = [...results, data.result];
                   setAnalysisResults(prev => [...prev, data.result]);
@@ -567,23 +605,22 @@ export default function Home() {
 
   // Update the extractConcepts function
   const extractConcepts = async (results: AnalysisResult[]) => {
-    let llmAbortController: AbortController | null = null;
     let ldaAbortController: AbortController | null = null;
 
     try {
       setIsExtracting({ llm: true, lda: true, embeddings: true });
 
       // Start both extractions in parallel
-      llmAbortController = new AbortController();
+      // llmAbortController = new AbortController();
       ldaAbortController = new AbortController();
 
       // LLM Extraction
-      const llmPromise = fetch('/api/llm-extract-concepts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(results),
-        signal: llmAbortController.signal
-      });
+      // const llmPromise = fetch('/api/llm-extract-concepts', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(results),
+      //   signal: llmAbortController.signal
+      // });
 
       // LDA Extraction
       const ldaPromise = fetch('/api/lda-extract-concepts', {
@@ -593,75 +630,80 @@ export default function Home() {
         signal: ldaAbortController.signal
       });
 
-      const [llmResponse, ldaResponse] = await Promise.all([llmPromise, ldaPromise]);
+      // const [llmResponse, ldaResponse] = await Promise.all([llmPromise, ldaPromise]);
+      const ldaResponse = await ldaPromise
 
-      if (!llmResponse.ok || !ldaResponse.ok) {
+      if (!ldaResponse.ok) {
         throw new Error('One or more extraction methods failed');
       }
 
       const decoder = new TextDecoder();
 
       // Update LLM progress handling
-      const llmReader = llmResponse.body?.getReader();
-      if (llmReader) {
-        try {
-          while (true) {
-            const { done, value } = await llmReader.read();
-            if (done) break;
+      // const llmReader = llmResponse.body?.getReader();
+      // if (llmReader) {
+      //   try {
+      //     while (true) {
+      //       const { done, value } = await llmReader.read();
+      //       if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+      //       const chunk = decoder.decode(value);
+      //       const lines = chunk.split('\n');
 
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = JSON.parse(line.slice(5));
+      //       for (const line of lines) {
+      //         if (line.startsWith('data: ')) {
+      //           const data = JSON.parse(line.slice(5));
 
-                switch (data.type) {
-                  case 'extraction_progress':
-                    setExtractionProgress(prev => ({
-                      ...prev,
-                      llm: {
-                        processed: data.progress.processed,
-                        total: data.progress.total,
-                        message: data.message,
-                        type: 'llm'
-                      }
-                    }));
-                    break;
+      //           switch (data.type) {
+      //             case 'extraction_progress':
+      //               setExtractionProgress(prev => ({
+      //                 ...prev,
+      //                 llm: {
+      //                   processed: data.progress.processed,
+      //                   total: data.progress.total,
+      //                   message: data.message,
+      //                   type: 'llm'
+      //                 }
+      //               }));
+      //               break;
 
-                  case 'concepts':
-                    const extractedConcepts = data.extractedConcepts as ExtractedConcepts;
-                    setConceptDistributions(prev => {
-                      const newConcepts = new Map(prev.concepts);
-                      const newRaceDistributions = new Map(prev.raceDistributions);
+      //             case 'concepts':
+      //               const extractedConcepts = data.extractedConcepts as ExtractedConcepts;
+      //               setConceptDistributions(prev => {
+      //                 const newConcepts = new Map(prev.concepts);
+      //                 const newRaceDistributions = new Map(prev.raceDistributions);
 
-                      extractedConcepts.concepts.forEach((concept: string) => {
-                        newConcepts.set(concept, (newConcepts.get(concept) || 0) + 1);
-                        if (extractedConcepts.race) {
-                          if (!newRaceDistributions.has(extractedConcepts.race)) {
-                            newRaceDistributions.set(extractedConcepts.race, new Map());
-                          }
-                          const raceMap = newRaceDistributions.get(extractedConcepts.race)!;
-                          raceMap.set(concept, (raceMap.get(concept) || 0) + 1);
-                        }
-                      });
+      //                 extractedConcepts.concepts.forEach((concept: string) => {
+      //                   newConcepts.set(concept, (newConcepts.get(concept) || 0) + 1);
+      //                   if (extractedConcepts.race) {
+      //                     if (!newRaceDistributions.has(extractedConcepts.race)) {
+      //                       newRaceDistributions.set(extractedConcepts.race, new Map());
+      //                     }
+      //                     const raceMap = newRaceDistributions.get(extractedConcepts.race)!;
+      //                     raceMap.set(concept, (raceMap.get(concept) || 0) + 1);
+      //                   }
+      //                 });
 
-                      return { concepts: newConcepts, raceDistributions: newRaceDistributions };
-                    });
-                    break;
+      //                 return { concepts: newConcepts, raceDistributions: newRaceDistributions };
+      //               });
+      //               break;
 
-                  case 'complete':
-                    setIsExtracting(prev => ({ ...prev, llm: false }));
-                    setExtractionProgress(prev => ({ ...prev, llm: undefined }));
-                    break;
-                }
-              }
-            }
-          }
-        } finally {
-          llmReader.releaseLock();
-        }
-      }
+      //             case 'clusters':
+      //               setConceptClusters(data.clusters);
+      //               break;
+
+      //             case 'complete':
+      //               setIsExtracting(prev => ({ ...prev, llm: false }));
+      //               setExtractionProgress(prev => ({ ...prev, llm: undefined }));
+      //               break;
+      //           }
+      //         }
+      //       }
+      //     }
+      //   } finally {
+      //     llmReader.releaseLock();
+      //   }
+      // }
 
       // Update LDA progress handling
       const ldaReader = ldaResponse.body?.getReader();
@@ -727,7 +769,7 @@ export default function Home() {
     } finally {
       setIsExtracting({ llm: false, lda: false, embeddings: false });
       setExtractionProgress({});
-      if (llmAbortController) llmAbortController.abort();
+      // if (llmAbortController) llmAbortController.abort();
       if (ldaAbortController) ldaAbortController.abort();
     }
   };
@@ -743,7 +785,7 @@ export default function Home() {
         body: JSON.stringify(results)
       });
 
-      console.log("RESPONSE",response)
+      console.log("RESPONSE", response)
 
       if (!response.ok) throw new Error('Embeddings extraction failed');
 
@@ -842,9 +884,15 @@ export default function Home() {
   // Add this ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const conceptsFileInputRef = useRef<HTMLInputElement>(null);
+
   // Add click handler for the button
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleConceptsUploadClick = () => {
+    conceptsFileInputRef.current?.click();
   };
 
   // Update the ExtractionProgressDisplay component
@@ -943,6 +991,160 @@ export default function Home() {
     );
   };
 
+  // Update the calculateAgreementScores function
+  const calculateAgreementScores = async () => {
+    try {
+      // Prepare the data in the same format as handleDownloadResults
+      const allResults: AllResults = {
+        analysisResults,
+        conceptResults: {
+          llm: {
+            concepts: Array.from(conceptDistributions.concepts.entries()),
+            raceDistributions: Array.from(conceptDistributions.raceDistributions.entries()).map(
+              ([race, conceptMap]) => [race, conceptMap]
+            ),
+            clusters: conceptClusters
+          },
+          lda: ldaResults,
+          embeddings: embeddingsResults
+        }
+      };
+
+      const response = await fetch('/api/calculate-agreement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allResults)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to calculate agreement scores');
+      }
+
+      const data = await response.json();
+      setAgreementData(data);
+    } catch (error) {
+      console.error('Error calculating agreement scores:', error);
+      toast.error('Failed to calculate agreement scores');
+    }
+  };
+
+  // Call calculateAgreementScores when all three extraction methods are complete
+  useEffect(() => {
+    if (
+      conceptDistributions.concepts.size > 0 &&
+      ldaResults &&
+      embeddingsResults.length > 0
+    ) {
+      calculateAgreementScores();
+    }
+  }, [conceptDistributions.concepts.size, ldaResults, embeddingsResults.length]);
+
+  // In the page.tsx component, add these functions:
+  const handleDownloadResults = () => {
+    try {
+      // Prepare the data
+      const allResults: AllResults = {
+        analysisResults,
+        conceptResults: {
+          llm: {
+            concepts: Array.from(conceptDistributions.concepts.entries()),
+            raceDistributions: Array.from(conceptDistributions.raceDistributions.entries()).map(
+              ([race, conceptMap]) => [race, conceptMap]
+            ),
+            clusters: conceptClusters
+          },
+          lda: ldaResults,
+          embeddings: embeddingsResults
+        }
+      };
+
+      // Convert Maps to plain objects for JSON serialization
+      const serializedResults = {
+        ...allResults,
+        conceptResults: {
+          ...allResults.conceptResults,
+          llm: {
+            ...allResults.conceptResults.llm,
+            raceDistributions: allResults.conceptResults.llm.raceDistributions.map(
+              ([race, conceptMap]) => [
+                race,
+                Object.fromEntries(conceptMap instanceof Map ? conceptMap : conceptMap)
+              ]
+            )
+          }
+        }
+      };
+
+      // Create and trigger download
+      const blob = new Blob([JSON.stringify(serializedResults, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `concept-analysis-results-${new Date().toISOString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('Results downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading results:', error);
+      toast.error('Failed to download results');
+    }
+  };
+
+  const handleUploadResults = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsLoadingConceptsFile(true);
+    toast.info('Processing uploaded concepts file...');
+
+    try {
+      const text = await file.text();
+      const allResults: AllResults = JSON.parse(text);
+
+      // Populate all the states
+      setAnalysisResults(allResults.analysisResults);
+
+      // Reconstruct the Maps for concept distributions
+      const conceptsMap = new Map(allResults.conceptResults.llm.concepts);
+      const raceDistributionsMap = new Map(
+        allResults.conceptResults.llm.raceDistributions.map(([race, dist]) => [
+          race,
+          new Map(Object.entries(dist instanceof Map ? Object.fromEntries(dist) : dist))
+        ])
+      );
+
+      setConceptDistributions({
+        concepts: conceptsMap,
+        raceDistributions: raceDistributionsMap
+      });
+
+      setLdaResults(allResults.conceptResults.lda);
+      setEmbeddingsResults(allResults.conceptResults.embeddings);
+
+      // Set clusters if they exist
+      if (allResults.conceptResults.llm.clusters) {
+        setConceptClusters(allResults.conceptResults.llm.clusters);
+      }
+
+      toast.success('Results with concepts loaded successfully');
+    } catch (error) {
+      console.error('Error uploading results:', error);
+      toast.error('Failed to upload results file', {
+        description: error instanceof Error ? error.message : 'Invalid file format'
+      });
+    } finally {
+      setIsLoadingConceptsFile(false);
+      if (event.target) {
+        event.target.value = ''; // Reset file input
+      }
+    }
+  }, []);
+
+  const [conceptClusters, setConceptClusters] = useState<ClusterData[]>([]);
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
       {/* Sidebar - Made more rectangular */}
@@ -1023,7 +1225,7 @@ export default function Home() {
       {/* Main Content - Update the classes */}
       <div className="flex-1 overflow-auto">
         <div className={`
-          ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0) 
+          ${(conceptDistributions.concepts.size > 0 || ldaResults || embeddingsResults.length > 0)
             ? 'flex flex-col sm:flex-row gap-6 h-[100dvh] overflow-hidden'
             : 'flex justify-center p-6 min-h-[100dvh]'}
         `}>
@@ -1128,10 +1330,10 @@ export default function Home() {
                     {/* Domain-specific Primary Issues */}
                     <div className="space-y-1">
                       <Label>
-                        {selectedParams.domain === 'healthcare' ? 'Symptoms' : 
-                         selectedParams.domain === 'finance' ? 'Financial Issues' :
-                         selectedParams.domain === 'education' ? 'Academic Issues' :
-                         'Primary Issues'}
+                        {selectedParams.domain === 'healthcare' ? 'Symptoms' :
+                          selectedParams.domain === 'finance' ? 'Financial Issues' :
+                            selectedParams.domain === 'education' ? 'Academic Issues' :
+                              'Primary Issues'}
                       </Label>
                       <div className="flex flex-wrap gap-1">
                         {DEFAULT_PIPELINE_PARAMS.domainPatterns[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].primaryIssues.map(issue => (
@@ -1158,9 +1360,9 @@ export default function Home() {
                     <div className="space-y-1">
                       <Label>
                         {selectedParams.domain === 'healthcare' ? 'Treatment Recommendations' :
-                         selectedParams.domain === 'finance' ? 'Financial Recommendations' :
-                         selectedParams.domain === 'education' ? 'Academic Recommendations' :
-                         'Recommendations'}
+                          selectedParams.domain === 'finance' ? 'Financial Recommendations' :
+                            selectedParams.domain === 'education' ? 'Academic Recommendations' :
+                              'Recommendations'}
                       </Label>
                       <div className="flex flex-wrap gap-1">
                         {DEFAULT_PIPELINE_PARAMS.domainPatterns[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.domainPatterns].recommendationPatterns.map(rec => (
@@ -1187,9 +1389,9 @@ export default function Home() {
                     <div className="space-y-1">
                       <Label>
                         {selectedParams.domain === 'healthcare' ? 'Medical History Statements' :
-                         selectedParams.domain === 'finance' ? 'Financial History Statements' :
-                         selectedParams.domain === 'education' ? 'Academic History Statements' :
-                         'Relevant Background Statements'}
+                          selectedParams.domain === 'finance' ? 'Financial History Statements' :
+                            selectedParams.domain === 'education' ? 'Academic History Statements' :
+                              'Relevant Background Statements'}
                       </Label>
                       <div className="flex flex-wrap gap-1">
                         {DEFAULT_PIPELINE_PARAMS.relevantStatements[selectedParams.domain as keyof typeof DEFAULT_PIPELINE_PARAMS.relevantStatements].map(statement => (
@@ -1333,23 +1535,41 @@ export default function Home() {
                     accept=".json"
                     onChange={handleFileUpload}
                     disabled={isAnalyzing || isProcessingFile}
-                    className="hidden" // Hide the input
+                    className="hidden"
                   />
-                  <Button
-                    variant="outline"
-                    disabled={isAnalyzing || isProcessingFile}
-                    className="flex items-center gap-2 h-10"
-                    onClick={handleUploadClick} // Add click handler
-                  >
-                    {isProcessingFile ? (
-                      'Processing...'
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4" />
-                        Load Existing Results
-                      </>
-                    )}
-                  </Button>
+                  <Input
+                    ref={conceptsFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleUploadResults}
+                    className="hidden"
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={isAnalyzing || isProcessingFile || isLoadingConceptsFile}
+                        className="flex items-center gap-2 h-10"
+                      >
+                        {isProcessingFile || isLoadingConceptsFile ? (
+                          'Processing...'
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4" />
+                            Load Results
+                          </>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handleUploadClick}>
+                        Without Concepts
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleConceptsUploadClick}>
+                        With Concepts
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
@@ -1389,7 +1609,7 @@ export default function Home() {
 
             {/* Analysis Results section */}
             {analysisResults.length > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 mt-3">
                 <div className="border-b pb-1 flex justify-between items-center">
                   <h2 className="text-lg font-semibold tracking-tight">Analysis Results</h2>
                   <Button
@@ -1555,7 +1775,50 @@ export default function Home() {
               <div className="flex flex-col h-full">
                 <div className="p-4 sm:p-6 pb-4">
                   <div className="border-b pb-1 mb-4">
-                    <h2 className="text-lg font-semibold tracking-tight">Concept Analysis</h2>
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-lg font-semibold tracking-tight">Concept Analysis</h2>
+                      <div className="flex gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleDownloadResults}
+                                disabled={!conceptDistributions.concepts.size && !ldaResults && !embeddingsResults.length}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Download Results</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div>
+                                <label htmlFor="upload-results" className="cursor-pointer">
+                                  <Button variant="outline" size="icon" asChild>
+                                    <div>
+                                      <Upload className="h-4 w-4" />
+                                      <input
+                                        id="upload-results"
+                                        type="file"
+                                        accept=".json"
+                                        onChange={handleUploadResults}
+                                        className="hidden"
+                                      />
+                                    </div>
+                                  </Button>
+                                </label>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>Upload Results</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </div>
                   </div>
 
                   <ExtractionProgressDisplay />
@@ -1564,10 +1827,11 @@ export default function Home() {
                 <div className="flex-1 min-h-0">
                   <Tabs defaultValue="llm" className="w-full h-full flex flex-col">
                     <div className="px-4 sm:px-6">
-                      <TabsList className="grid w-full lg:grid-cols-3 md:grid-cols-3 sm:grid-cols-1 mb-4 h-auto">
+                      <TabsList className="grid w-full lg:grid-cols-4 md:grid-cols-2 sm:grid-cols-1 mb-4 h-auto">
                         <TabsTrigger value="llm" className="py-2">LLM Concepts</TabsTrigger>
                         <TabsTrigger value="lda" className="py-2">LDA Concepts</TabsTrigger>
-                        <TabsTrigger value="embeddings" className="py-2">BERT Embeddings Concepts</TabsTrigger>
+                        <TabsTrigger value="embeddings" className="py-2">BERT Embeddings</TabsTrigger>
+                        <TabsTrigger value="agreement" className="py-2">Agreement Scores</TabsTrigger>
                       </TabsList>
                     </div>
 
@@ -1588,7 +1852,13 @@ export default function Home() {
                             </div>
                           </div>
                           <div className="hidden sm:block"> {/* Desktop-only view */}
-                            <ConceptVisualizations conceptData={conceptDistributions} />
+                            <ConceptVisualizations
+                              conceptData={{
+                                concepts: conceptDistributions.concepts,
+                                raceDistributions: conceptDistributions.raceDistributions,
+                                clusters: conceptClusters
+                              }}
+                            />
                           </div>
                         </div>
                       )}
@@ -1606,8 +1876,8 @@ export default function Home() {
                                   {/* Mobile-optimized layout for topic words */}
                                   <div className="flex flex-wrap gap-2">
                                     {topic.words.map((word, idx) => (
-                                      <Badge 
-                                        key={word} 
+                                      <Badge
+                                        key={word}
                                         variant="secondary"
                                         className="flex items-center gap-1"
                                       >
@@ -1633,6 +1903,21 @@ export default function Home() {
                           <div className="hidden sm:block"> {/* Desktop-only view */}
                             <EmbeddingsVisualizations results={embeddingsResults} />
                           </div>
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    {/* Agreement Scores Tab - Mobile optimized */}
+                    <TabsContent value="agreement" className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
+                      {conceptDistributions.concepts.size > 0 && ldaResults && embeddingsResults.length > 0 && (
+                        <div className="space-y-6 pb-6">
+                          <AgreementScoreVisualizations
+                            agreementData={agreementData}
+                            embeddingsData={embeddingsResults.map((result) => ({
+                              pca_one: result.coordinates?.[0] ?? 0,
+                              pca_two: result.coordinates?.[1] ?? 0
+                            }))}
+                          />
                         </div>
                       )}
                     </TabsContent>

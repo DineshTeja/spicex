@@ -10,11 +10,21 @@ export async function POST(req: Request) {
       try {
         const results: AnalysisResult[] = await req.json();
         
-        // Extract all responses from the results
-        const responses: string[] = [];
+        // Extract all responses from the results with race information
+        const responses: { text: string; race: string }[] = [];
         results.forEach(result => {
           result.prompts.forEach(prompt => {
-            responses.push(...prompt.responses);
+            prompt.responses.forEach(response => {
+              // Get race from prompt metadata
+              const race = prompt.metadata.demographics.find(d => 
+                ['Asian', 'Black', 'Hispanic', 'White'].includes(d)
+              ) || 'Unknown';
+              
+              responses.push({
+                text: response,
+                race
+              });
+            });
           });
         });
 

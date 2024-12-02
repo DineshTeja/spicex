@@ -126,4 +126,18 @@ export type EmbeddingsResult = {
   size: number;
   representative_responses: string[];
   distribution: { [key: string]: number };
-}; 
+  coordinates: [number, number];
+};
+
+export interface AgreementScores {
+  agreement_scores: {
+    cluster_topic: number;
+    cluster_embedding: number;
+    topic_embedding: number;
+  };
+  cluster_mappings: {
+    cluster_to_topic: Record<string, number>;
+    cluster_to_embedding: Record<string, number>;
+    topic_to_embedding: Record<string, number>;
+  };
+} 

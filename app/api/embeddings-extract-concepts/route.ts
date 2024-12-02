@@ -15,11 +15,15 @@ export async function POST(req: Request) {
         results.forEach(result => {
           result.prompts.forEach(prompt => {
             prompt.responses.forEach(response => {
+              // Get race from prompt metadata instead of result demographics
+              const race = prompt.metadata.demographics.find(d => 
+                ['Asian', 'Black', 'Hispanic', 'White'].includes(d)
+              ) || 'Unknown';
+              
+              // Create single entry for this response
               responses.push({
                 response,
-                race: result.demographics.find(d => 
-                  ['Asian', 'African', 'Caucasian', 'Hispanic'].includes(d)
-                ) || 'Unknown'
+                race
               });
             });
           });
