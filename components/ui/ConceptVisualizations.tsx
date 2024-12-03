@@ -382,7 +382,7 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
         <>
           <Card>
             <CardContent className="pt-4">
-              <h3 className="text-lg font-semibold mb-4">Concept Clusters Analysis</h3>
+              <h3 className="text-lg font-semibold mb-4">Concept Clusters</h3>
               <canvas ref={clusterChartRef} />
             </CardContent>
           </Card>
