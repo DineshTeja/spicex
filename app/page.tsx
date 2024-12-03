@@ -910,7 +910,8 @@ export default function Home() {
         analysisResults,
         conceptData.extractedConcepts,
         ldaResults,
-        embeddingsResults
+        embeddingsResults, 
+        conceptData.clusters || []
       );
 
       const response = await fetch('/api/calculate-agreement', {
@@ -1706,7 +1707,8 @@ export default function Home() {
                                     analysisResults,
                                     conceptData.extractedConcepts,
                                     ldaResults,
-                                    embeddingsResults
+                                    embeddingsResults, 
+                                    conceptData.clusters || []
                                   );
                                   downloadCSV(csv, 'merged_analysis.csv');
                                 }}

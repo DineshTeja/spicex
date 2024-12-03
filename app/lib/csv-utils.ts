@@ -11,6 +11,7 @@ export interface ConceptExtractionRow {
   Race: string;
   Response: string;
   GPT_Categories: string;
+  Cluster: string;
 }
 
 export interface LDAExtractionRow {
@@ -36,9 +37,37 @@ export interface EmbeddingsExtractionRow {
   raw_embeddings: number[];
 }
 
+interface ClusterData {
+  id: number;
+  concepts: string[];
+  frequency: number[];
+}
+
+interface MergedRow {
+  Category: string;
+  Relevance: string;
+  Perspective: string;
+  Question_Type: string;
+  Prompt: string;
+  Gender: string | null;
+  Race: string;
+  Response: string;
+  GPT_Categories: string;
+  Concept_Cluster: string;
+  Dominant_Topic: number | string;
+  Topic_Probability: number | string;
+  Topic_Keywords: string;
+  Topic_Distribution: string;
+  PCA_One: number | string;
+  PCA_Two: number | string;
+  Embeddings_Cluster: number | string;
+  Raw_Embeddings: number[] | string;
+}
+
 export function createConceptExtractionCSV(
   analysisResults: AnalysisResult[],
-  extractedConcepts: ExtractedConcepts[]
+  extractedConcepts: ExtractedConcepts[], 
+  clusters: ClusterData[]
 ): string {
   // Create rows array to hold all data
   const rows: ConceptExtractionRow[] = [];
@@ -58,16 +87,28 @@ export function createConceptExtractionCSV(
         );
 
         if (matchingConcepts) {
-          rows.push({
-            Category: "Anxiety Management",
-            Relevance: "Neutral", //TODO:replace with prompt.metadata.relevance
-            Perspective: prompt.metadata.perspective || "First",
-            Question_Type: "Open-Ended",
-            Prompt: prompt.text,
-            Gender: gender,
-            Race: matchingConcepts.race || "Unknown",
-            Response: response,
-            GPT_Categories: JSON.stringify(matchingConcepts.concepts)
+          // Parse concepts array from string if needed
+          const concepts = Array.isArray(matchingConcepts.concepts) 
+            ? matchingConcepts.concepts 
+            : JSON.parse(matchingConcepts.concepts as unknown as string);
+
+          // Create a row for each concept
+          concepts.forEach((concept: string) => {
+            // Find which cluster this concept belongs to
+            const clusterNumber = clusters.find(c => c.concepts.includes(concept))?.id.toString() || "";
+
+            rows.push({
+              Category: "Anxiety Management",
+              Relevance: "Neutral",
+              Perspective: prompt.metadata.perspective || "First",
+              Question_Type: "Open-Ended",
+              Prompt: prompt.text,
+              Gender: gender,
+              Race: matchingConcepts.race || "Unknown",
+              Response: response,
+              GPT_Categories: concept,
+              Cluster: clusterNumber
+            });
           });
         }
       });
@@ -224,15 +265,14 @@ export function createMergedAnalysisCSV(
     embeddings: number[][];
     size: number;
     distribution: { [key: string]: number };
-  }[]
+  }[],
+  clusters: ClusterData[]
 ): string {
-  // Create individual dataframes
-  const llmRows: ConceptExtractionRow[] = [];
-  const ldaRows: LDAExtractionRow[] = [];
-  const embeddingsRows: EmbeddingsExtractionRow[] = [];
+  // Create rows array to hold all data
+  const mergedRows: MergedRow[] = [];
+  let currentResponseIdx = 0;
 
   // Process each response once and create all rows
-  let responseIndex = 0;
   analysisResults.forEach(result => {
     result.prompts.forEach(prompt => {
       const gender = prompt.metadata.demographics.find(d => 
@@ -243,119 +283,89 @@ export function createMergedAnalysisCSV(
         ['Asian', 'Black', 'Hispanic', 'White'].includes(d)
       ) || 'Unknown';
 
-      prompt.responses.forEach((response) => {
-        // Clean response text for consistency
+      prompt.responses.forEach(response => {
         const cleanResponse = response.replace(/[\n\r]+/g, ' ').trim();
 
-        // 1. LLM Concepts
+        // 1. LLM Concepts - now exploded
         const matchingConcepts = extractedConcepts.find(
           ec => ec.response === cleanResponse
         );
 
         if (matchingConcepts) {
-          llmRows.push({
-            Category: "Anxiety Management",
-            Relevance: "Neutral",
-            Perspective: prompt.metadata.perspective || "First",
-            Question_Type: "Open-Ended",
-            Prompt: prompt.text,
-            Gender: gender,
-            Race: race,
-            Response: cleanResponse,
-            GPT_Categories: JSON.stringify(matchingConcepts.concepts)
-          });
-        }
+          // Get concepts array
+          const concepts = Array.isArray(matchingConcepts.concepts) 
+            ? matchingConcepts.concepts 
+            : JSON.parse(matchingConcepts.concepts as unknown as string);
 
-        // 2. LDA Topics
-        const topicDistribution = ldaResults.distributions[responseIndex];
-        if (topicDistribution) {
-          // Find dominant topic and its probability
-          const dominantTopicIndex = topicDistribution.indexOf(Math.max(...topicDistribution));
-          const dominantTopic = ldaResults.topics[dominantTopicIndex];
-          const topicProbability = topicDistribution[dominantTopicIndex];
+          // 2. LDA Topics
+          const topicDistribution = ldaResults.distributions[currentResponseIdx];
+          const dominantTopicIndex = topicDistribution 
+            ? topicDistribution.indexOf(Math.max(...topicDistribution))
+            : -1;
+          const dominantTopic = dominantTopicIndex !== -1 
+            ? ldaResults.topics[dominantTopicIndex]
+            : null;
 
-          // Get all topic probabilities for this response
-          const allTopicProbabilities = ldaResults.topics.map((topic, idx) => ({
-            topic_id: topic.topic_id,
-            probability: topicDistribution[idx]
-          }));
+          // 3. Embeddings
+          const embeddingCluster = embeddingsResults.find(c => 
+            c.representative_responses.some(rep => 
+              rep.replace(/[\n\r\s]+/g, ' ').trim().toLowerCase() === 
+              cleanResponse.toLowerCase()
+            )
+          );
 
-          ldaRows.push({
-            Prompt: prompt.text,
-            Response: cleanResponse,
-            Gender: gender,
-            Race: race,
-            Dominant_Topic: dominantTopic.topic_id,
-            Topic_Probability: topicProbability,
-            Topic_Keywords: dominantTopic.words.slice(0, 5).join(', '),
-            Topic_Description: JSON.stringify(allTopicProbabilities)
-          });
-        }
-
-        // 3. Embeddings
-        const cluster = embeddingsResults.find(c => 
-          c.representative_responses.some(rep => 
-            rep.replace(/[\n\r\s]+/g, ' ').trim().toLowerCase() === 
-            cleanResponse.toLowerCase()
-          )
-        );
-
-        if (cluster) {
-          const responseIdx = cluster.representative_responses.findIndex(rep =>
+          const responseEmbeddingIdx = embeddingCluster?.representative_responses.findIndex(rep =>
             rep.replace(/[\n\r\s]+/g, ' ').trim().toLowerCase() === 
             cleanResponse.toLowerCase()
           );
-          
-          if (responseIdx !== -1) {
-            const coordinates = cluster.coordinates[responseIdx];
-            const embeddings = cluster.embeddings[responseIdx];
-            
-            embeddingsRows.push({
-              Prompt: prompt.text,
-              Response: cleanResponse,
-              processed_response: cleanResponse.toLowerCase().replace(/[^\w\s]/g, ''),
-              pca_one: coordinates[0],
-              pca_two: coordinates[1],
-              cluster: Math.round(cluster.cluster_id),
-              pca_cluster_number: `Cluster ${cluster.cluster_id}`,
-              raw_embeddings: embeddings
-            });
-          }
-        }
 
-        responseIndex++;
+          // Create a row for each concept
+          concepts.forEach((concept: string) => {
+            // Find which cluster this concept belongs to
+            const clusterNumber = clusters.find(c => c.concepts.includes(concept))?.id.toString() || "";
+
+            // Create merged row with all information
+            mergedRows.push({
+              // LLM Concept fields (exploded)
+              Category: "Anxiety Management",
+              Relevance: "Neutral",
+              Perspective: prompt.metadata.perspective || "First",
+              Question_Type: "Open-Ended",
+              Prompt: prompt.text,
+              Gender: gender,
+              Race: race,
+              Response: cleanResponse,
+              GPT_Categories: concept,
+              Concept_Cluster: clusterNumber,
+
+              // LDA Topic fields
+              Dominant_Topic: dominantTopic?.topic_id ?? "",
+              Topic_Probability: dominantTopic ? topicDistribution[dominantTopicIndex] : "",
+              Topic_Keywords: dominantTopic ? dominantTopic.words.slice(0, 5).join(', ') : "",
+              Topic_Distribution: topicDistribution ? JSON.stringify(
+                ldaResults.topics.map((topic, idx) => ({
+                  topic_id: topic.topic_id,
+                  probability: topicDistribution[idx]
+                }))
+              ) : "",
+
+              // Embeddings fields
+              PCA_One: embeddingCluster && responseEmbeddingIdx !== undefined && responseEmbeddingIdx !== -1
+                ? embeddingCluster.coordinates[responseEmbeddingIdx][0]
+                : "",
+              PCA_Two: embeddingCluster && responseEmbeddingIdx !== undefined && responseEmbeddingIdx !== -1
+                ? embeddingCluster.coordinates[responseEmbeddingIdx][1]
+                : "",
+              Embeddings_Cluster: embeddingCluster ? embeddingCluster.cluster_id : "",
+              Raw_Embeddings: embeddingCluster && responseEmbeddingIdx !== undefined && responseEmbeddingIdx !== -1
+                ? embeddingCluster.embeddings[responseEmbeddingIdx]
+                : []
+            });
+          });
+        }
+        currentResponseIdx++;
       });
     });
-  });
-
-  // Create merged rows by combining all data based on Prompt and Response
-  const mergedRows = llmRows.map(llmRow => {
-    const matchingLDA = ldaRows.find(
-      row => row.Prompt === llmRow.Prompt && row.Response === llmRow.Response
-    );
-    const matchingEmbeddings = embeddingsRows.find(
-      row => 
-        row.Prompt === llmRow.Prompt && 
-        row.Response.replace(/[\n\r\s]+/g, ' ').trim().toLowerCase() === 
-        llmRow.Response.toLowerCase()
-    );
-
-    return {
-      ...llmRow,
-      ...(matchingLDA && {
-        Dominant_Topic: matchingLDA.Dominant_Topic,
-        Topic_Probability: matchingLDA.Topic_Probability,
-        Topic_Keywords: matchingLDA.Topic_Keywords,
-        Topic_Distribution: matchingLDA.Topic_Description // Include full distribution
-      }),
-      ...(matchingEmbeddings && {
-        pca_one: matchingEmbeddings.pca_one,
-        pca_two: matchingEmbeddings.pca_two,
-        cluster: Math.round(matchingEmbeddings.cluster),
-        pca_cluster_number: matchingEmbeddings.pca_cluster_number,
-        raw_embeddings: matchingEmbeddings.raw_embeddings
-      })
-    };
   });
 
   // Use Papa Parse to convert to CSV

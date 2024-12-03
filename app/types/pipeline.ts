@@ -95,6 +95,7 @@ export type ExtractedConcepts = {
   concepts: string[];
   race?: string;
   response: string;
+  cluster?: number;
 };
 
 export type LDAExtractedConcepts = {

@@ -336,14 +336,15 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
 
   // Add this handler function
   const handleDownloadCSV = () => {
-    if (!conceptData.rawResults || !conceptData.extractedConcepts) {
+    if (!conceptData.rawResults || !conceptData.extractedConcepts || !conceptData.clusters) {
       console.error("Missing required data for CSV export");
       return;
     }
 
     const csv = createConceptExtractionCSV(
       conceptData.rawResults,
-      conceptData.extractedConcepts
+      conceptData.extractedConcepts, 
+      conceptData.clusters
     );
     downloadCSV(csv, 'concept_extraction_results.csv');
   };
@@ -374,6 +375,8 @@ export function ConceptVisualizations({ conceptData }: ConceptVisualizationsProp
           <canvas ref={distributionChartRef} />
         </CardContent>
       </Card>
+
+      {/* {JSON.stringify(conceptData)} */}
 
       {conceptData.clusters && (
         <>
