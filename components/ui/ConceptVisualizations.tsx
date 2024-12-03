@@ -8,13 +8,13 @@ import { createConceptExtractionCSV, downloadCSV } from "@/app/lib/csv-utils";
 import { DownloadIcon } from "lucide-react";
 import { AnalysisResult, ExtractedConcepts } from "@/app/types/pipeline";
 
-interface ClusterData {
+type ClusterData = {
   id: number;
   concepts: string[];
   frequency: number[];
 }
 
-interface ConceptVisualizationsProps {
+type ConceptVisualizationsProps = {
   conceptData: {
     concepts: Map<string, number>;
     raceDistributions: Map<string, Map<string, number>>;
@@ -27,7 +27,7 @@ interface ConceptVisualizationsProps {
 const ITEMS_PER_PAGE = 8;
 
 // Add ClusterHeatmap component interface
-interface ClusterHeatmapProps {
+type ClusterHeatmapProps = {
   data: number[][];
   races: string[];
   clusters: string[];

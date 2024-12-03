@@ -4,7 +4,7 @@ import { join } from 'path';
 import fs from 'fs/promises';
 import path from 'path';
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   const publicDir = path.join(process.cwd(), 'public');
   const csvPath = path.join(publicDir, 'merged_analysis.csv');
   
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       throw writeError;
     }
     
-    return new Promise((resolve, reject) => {
+    const pythonResult = await new Promise<Response>((resolve) => {
       console.log('Spawning Python process...');
       const pythonProcess = spawn('python', [
         join(process.cwd(), 'new_agreement_score.py')
@@ -75,7 +75,10 @@ export async function POST(req: Request) {
 
         if (code !== 0) {
           console.error('Python error:', error);
-          reject(new Error(`Python process exited with code ${code}: ${error}`));
+          resolve(NextResponse.json(
+            { error: `Python process exited with code ${code}: ${error}` },
+            { status: 500 }
+          ));
           return;
         }
 
@@ -84,15 +87,23 @@ export async function POST(req: Request) {
           resolve(NextResponse.json(parsedResult));
         } catch (e) {
           console.error('Failed to parse Python output:', e);
-          reject(new Error(`Failed to parse Python output: ${e}`));
+          resolve(NextResponse.json(
+            { error: `Failed to parse Python output: ${e}` },
+            { status: 500 }
+          ));
         }
       });
 
       pythonProcess.on('error', (err) => {
         console.error('Python process error:', err);
-        reject(new Error(`Failed to start Python process: ${err.message}`));
+        resolve(NextResponse.json(
+          { error: `Failed to start Python process: ${err.message}` },
+          { status: 500 }
+        ));
       });
     });
+
+    return pythonResult;
 
   } catch (error) {
     console.error('Error in calculate-agreement route:', error);

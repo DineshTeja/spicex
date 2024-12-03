@@ -1,7 +1,7 @@
 import { AnalysisResult, ExtractedConcepts, LDATopicResult } from "@/app/types/pipeline";
 import Papa from 'papaparse';
 
-export interface ConceptExtractionRow {
+export type ConceptExtractionRow = {
   Category: string;
   Relevance: string; 
   Perspective: string;
@@ -14,7 +14,7 @@ export interface ConceptExtractionRow {
   Cluster: string;
 }
 
-export interface LDAExtractionRow {
+export type LDAExtractionRow = {
   Prompt: string;
   Response: string;
   Gender: string | null;
@@ -26,7 +26,7 @@ export interface LDAExtractionRow {
   Topic_Distribution?: string;
 }
 
-export interface EmbeddingsExtractionRow {
+export type EmbeddingsExtractionRow = {
   Prompt: string;
   Response: string;
   processed_response: string;
@@ -37,13 +37,13 @@ export interface EmbeddingsExtractionRow {
   raw_embeddings: number[];
 }
 
-interface ClusterData {
+type ClusterData = {
   id: number;
   concepts: string[];
   frequency: number[];
 }
 
-interface MergedRow {
+type MergedRow = {
   Category: string;
   Relevance: string;
   Perspective: string;

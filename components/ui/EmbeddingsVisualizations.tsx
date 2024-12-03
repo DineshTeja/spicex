@@ -16,7 +16,7 @@ type EmbeddingsResult = {
     embeddings: number[][];
 };
 
-interface EmbeddingsVisualizationsProps {
+type EmbeddingsVisualizationsProps = {
     results: EmbeddingsResult[];
     analysisResults?: AnalysisResult[];
 }

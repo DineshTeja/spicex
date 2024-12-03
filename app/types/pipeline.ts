@@ -103,19 +103,19 @@ export type LDAExtractedConcepts = {
   distributions: number[][];
 };
 
-export interface ClusterConcept {
+export type ClusterConcept = {
   cluster_id: number;
   size: number;
   representative_responses: string[];
   distribution: { [race: string]: number };
 }
 
-export interface EmbeddingsResults {
+export type EmbeddingsResults = {
   clusters: ClusterConcept[];
   distributions: number[][];
 }
 
-export interface ExtractionProgress {
+export type ExtractionProgress = {
   processed: number;
   total: number;
   message: string;
@@ -129,9 +129,9 @@ export type EmbeddingsResult = {
   distribution: { [key: string]: number };
   coordinates: number[][];
   embeddings: number[][];
-};
+}
 
-export interface AgreementScores {
+export type AgreementScores = {
   agreement_scores: {
     cluster_topic: number;
     cluster_embedding: number;
@@ -169,7 +169,7 @@ export type AllResults = {
   };
 };
 
-export interface AgreementVisualizationPoint {
+export type AgreementVisualizationPoint = {
   pca_one: number;
   pca_two: number;
   cluster_topic_agree: number;
@@ -181,7 +181,7 @@ export type ContingencyTable = {
   table: number[][];
   rowLabels: string[];
   colLabels: string[];
-};
+}
 
 export type MappingData = {
   cluster_topic_mapping: { [key: string]: number };
@@ -192,4 +192,4 @@ export type MappingData = {
     cluster_pca: ContingencyTable;
     topic_pca: ContingencyTable;
   };
-};
+}
