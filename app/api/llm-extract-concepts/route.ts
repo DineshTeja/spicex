@@ -48,7 +48,7 @@ async function runConceptClustering(conceptFrequencies: Map<string, number>) {
   });
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {

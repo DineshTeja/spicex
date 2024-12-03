@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { AnalysisResult, LDAResult } from '@/app/types/pipeline';
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {

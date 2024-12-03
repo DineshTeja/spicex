@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runAnalysisPipeline } from '@/app/lib/pipeline-service';
 import { SelectedParams } from '@/app/types/pipeline';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<Response> {
   try {
     const params = await request.json() as SelectedParams;
     
@@ -28,13 +28,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Run analysis pipeline with progress updates - use params.iterations
+    // Run analysis pipeline with progress updates
     runAnalysisPipeline(params, async (update) => {
       await writer.write(
         encoder.encode(`data: ${JSON.stringify(update)}\n\n`)
       );
     }).then(async (result) => {
-      // Send the final result
       await writer.write(
         encoder.encode(`data: ${JSON.stringify({ type: 'complete', result })}\n\n`)
       );

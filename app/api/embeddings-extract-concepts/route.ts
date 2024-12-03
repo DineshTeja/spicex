@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { AnalysisResult } from '@/app/types/pipeline';
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<Response> {
   try {
     console.log('Starting embeddings extraction...');
     const results: AnalysisResult[] = await req.json();
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const pythonScript = path.join(process.cwd(), 'app', 'python', 'embeddings_extractor.py');
     console.log('Launching Python script:', pythonScript);
     
-    return new Promise((resolve, reject) => {
+    const pythonResult = await new Promise<Record<string, unknown>>((resolve, reject) => {
       const pythonProcess = spawn('python', [pythonScript]);
       let outputData = '';
       let errorData = '';
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
             reject(new Error(result.error));
             return;
           }
-          resolve(NextResponse.json(result));
+          resolve(result);
         } catch (error) {
           console.error('Failed to parse Python output:', outputData);
           reject(new Error(`Failed to parse Python output: ${error}`));
@@ -74,6 +74,8 @@ export async function POST(req: Request) {
       pythonProcess.stdin.write(inputJson);
       pythonProcess.stdin.end();
     });
+
+    return NextResponse.json(pythonResult);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
